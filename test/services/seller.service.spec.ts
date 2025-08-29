@@ -5,13 +5,11 @@ import {
   registerOrUpdateSeller,
   getAllSellerItems, 
   addOrUpdateSellerItem,
-  deleteSellerItem,
-  getSellersWithinSanctionedRegion 
+  deleteSellerItem
 } from '../../src/services/seller.service';
 import User from '../../src/models/User';
 import UserSettings from '../../src/models/UserSettings';
-import { RestrictedArea, RestrictedAreaBoundaries } from '../../src/models/enums/restrictedArea';
-import { IUser, ISeller, ISellerItem, ISanctionedRegion } from '../../src/types';
+import { IUser, ISeller, ISellerItem } from '../../src/types';
 
 describe('getAllSellers function', () => {
   const mockBoundingBox = {
@@ -21,14 +19,18 @@ describe('getAllSellers function', () => {
     ne_lng: -73.8000
   };
 
-  it('should fetch all applicable sellers when all parameters are empty', async () => {
+  it('should fetch all unrestricted sellers when all parameters are empty', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     const sellersData = await getAllSellers(undefined, undefined, userData.pi_uid);
 
-    expect(sellersData).toHaveLength(await Seller.countDocuments());
+    expect(sellersData).toHaveLength(
+      await Seller.find({ 
+        isRestricted: { $ne: true } 
+      }).countDocuments()
+    )
   });
 
-  it('should fetch all applicable sellers when all parameters are empty and userSettings does not exist', async () => {
+  it('should fetch all unrestricted and applicable sellers when all parameters are empty and userSettings does not exist', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser17' }) as IUser;
     const userSettings = await UserSettings.findOne({ user_settings_id: userData.pi_uid });
     expect(userSettings).toBeNull();
@@ -39,7 +41,7 @@ describe('getAllSellers function', () => {
     expect(sellersData).toHaveLength(1);
   });
 
-  it('should fetch all applicable filtered sellers when all parameters are empty', async () => {
+  it('should fetch all unrestricted and applicable filtered sellers when all parameters are empty', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser2' }) as IUser;
     const sellersData = await getAllSellers(undefined, undefined, userData.pi_uid);
 
@@ -47,7 +49,7 @@ describe('getAllSellers function', () => {
     expect(sellersData).toHaveLength(2);
   });
 
-  it('should fetch all applicable sellers when search query is provided and bounding box params are empty', async () => {
+  it('should fetch all unrestricted and applicable sellers when search query is provided and bounding box params are empty', async () => {
     const searchQuery = 'Vendor';
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     
@@ -56,12 +58,12 @@ describe('getAllSellers function', () => {
     // filter seller records to include those with "Vendor"
     expect(sellersData).toHaveLength(
       await Seller.find({
-        $text: { $search: searchQuery, $caseSensitive: false },
+        $text: { $search: searchQuery },
       }).countDocuments()
     ); // Ensure length matches expected sellers
   });
 
-  it('should fetch all applicable sellers when bounding box params are provided and search query param is empty', async () => {
+  it('should fetch all unrestricted and applicable sellers when bounding box params are provided and search query param is empty', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     const sellersData = await getAllSellers(mockBoundingBox, undefined, userData.pi_uid);
     
@@ -80,7 +82,7 @@ describe('getAllSellers function', () => {
     ); // Ensure length matches expected sellers
   });
 
-  it('should fetch all applicable sellers when all parameters are provided', async () => {
+  it('should fetch all unrestricted and applicable sellers when all parameters are provided', async () => {
     const searchQuery = 'Seller';
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
 
@@ -90,7 +92,7 @@ describe('getAllSellers function', () => {
        + include those with sell_map_center within geospatial bounding box */
     expect(sellersData).toHaveLength(
       await Seller.countDocuments({
-        $text: { $search: searchQuery, $caseSensitive: false },
+        $text: { $search: searchQuery },
         'sell_map_center.coordinates': {
           $geoWithin: {
             $box: [
@@ -469,84 +471,5 @@ describe('deleteSellerItem function', () => {
     await expect(deleteSellerItem(sellerItem._id)).rejects.toThrow(
       'Mock database error'
     );
-  });
-});
-
-describe('getSellersWithinSanctionedRegion function', () => {
-  it('should fetch all sellers within a sanctioned region in Cuba', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.CUBA,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.CUBA]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-
-    expect(sellersData).toHaveLength(1);
-  });
-
-  it('should fetch all sellers within a sanctioned region in Iran', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.IRAN,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.IRAN]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-
-    expect(sellersData).toHaveLength(1);
-  });
-
-  it('should fetch all sellers within a sanctioned region in North Korea', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.NORTH_KOREA,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.NORTH_KOREA]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-
-    expect(sellersData).toHaveLength(1);
-  });
-
-  it('should fetch all sellers within a sanctioned region in Syria', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.SYRIA,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.SYRIA]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-
-    expect(sellersData).toHaveLength(1);
-  });
-
-  it('should fetch all sellers within a sanctioned region in Republic of Crimea', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.REPUBLIC_OF_CRIMEA,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.REPUBLIC_OF_CRIMEA]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-
-    expect(sellersData).toHaveLength(1);
-  });
-
-  it('should fetch all sellers within a sanctioned region in Donetsk Oblast', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.DONETSK_OBLAST,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.DONETSK_OBLAST]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-
-    expect(sellersData).toHaveLength(1);
-  });
-
-  it('should fetch all sellers within a sanctioned region in Luhansk Oblast', async () => {
-    const sanctionedRegion = {
-      location: RestrictedArea.LUHANSK_OBLAST,
-      boundary: RestrictedAreaBoundaries[RestrictedArea.LUHANSK_OBLAST]
-    } as ISanctionedRegion;
-    
-    const sellersData = await getSellersWithinSanctionedRegion(sanctionedRegion);
-    // potential seller location overlap with boundaries between Donetsk Oblast and Luhansk Oblast.
-    expect(sellersData).toHaveLength(1);
   });
 });

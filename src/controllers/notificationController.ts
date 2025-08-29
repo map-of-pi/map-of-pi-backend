@@ -30,8 +30,11 @@ export const getNotifications = async (req: Request, res: Response) => {
   const skip = req.query.skip ? Number(req.query.skip) : 0;
   const limit = req.query.limit ? Number(req.query.limit) : 20;
 
+  const status = ['cleared', 'uncleared'].includes(req.query.status as string)
+    ? (req.query.status as 'cleared' | 'uncleared') : undefined;
+
   try {
-    const notifications = await notificationService.getNotifications(authUser.pi_uid, skip, limit);
+    const notifications = await notificationService.getNotifications(authUser.pi_uid, skip, limit, status);
     return res.status(200).json(notifications);
   } catch (error) {
     logger.error('Failed to get notifications', error);

@@ -8,6 +8,7 @@ const paymentSchema = new Schema<IPayment>(
     user_id: {
       type: SchemaTypes.ObjectId,
       required: true,
+      ref: "User"
     },
     pi_payment_id: {
       type: String,

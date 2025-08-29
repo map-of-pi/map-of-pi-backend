@@ -1,30 +1,38 @@
-import logger from "../config/loggingConfig";
+import { 
+  MembershipClassType, 
+  MappiCreditType,
+  membershipTiers
+} from '../models/enums/membershipClassType';
 
-const MembershipSubscription = async () => {
-  try {
-    // Simulate fetching membership subscription data from an API or database
-    const subscriptionData = {
-      userId: "12345",
-      subscriptionId: "abcde",
-      status: "active",
-      plan: "premium",
-    };
+export const isExpired = (date?: Date | null): boolean => 
+  date === undefined ? true : date === null ? false : date < new Date();
 
-    // Log the subscription data
-    logger.info("Membership Subscription Data: ", subscriptionData);
+export const isOnlineShoppingClass = (tier: MembershipClassType): boolean =>
+  [
+    MembershipClassType.GREEN,
+    MembershipClassType.GOLD,
+    MembershipClassType.DOUBLE_GOLD,
+    MembershipClassType.TRIPLE_GOLD,
+  ].includes(tier);
 
-    // Process the subscription data (e.g., save to database, send confirmation email, etc.)
-    // This is a placeholder for actual processing logic
-    const processedData = {
-      ...subscriptionData,
-      processedAt: new Date(),
-    };
+export const isOfflineShoppingClass = (tier: MembershipClassType): boolean =>
+  [
+    MembershipClassType.CASUAL,
+    MembershipClassType.WHITE,
+  ].includes(tier);
 
-    logger.info("Processed Membership Subscription Data: ", processedData);
-  } catch (error) {
-    logger.error(`Error processing membership subscription: ${error}`);
-    throw error;
-  }
-}
+export const isMappiCreditType = (credit: MappiCreditType): boolean =>
+  [
+    MappiCreditType.SINGLE 
+  ].includes(credit);
 
-export default MembershipSubscription
+export const isSameShoppingClassType = (a: MembershipClassType, b: MembershipClassType): boolean =>
+  (isOnlineShoppingClass(a) && isOnlineShoppingClass(b)) || (isOfflineShoppingClass(a) && isOfflineShoppingClass(b));
+
+export const getTierByClass = (tierClass: MembershipClassType) => {
+  return Object.values(membershipTiers).find((tier) => tier.CLASS === tierClass);
+};
+
+export const getTierRank = (tierClass: MembershipClassType): number => {
+  return getTierByClass(tierClass)?.RANK ?? -1;
+};

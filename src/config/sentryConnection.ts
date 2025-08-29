@@ -23,19 +23,33 @@ if (env.NODE_ENV === 'production') {
 
 // create a custom Sentry transport for Winston in production
 class SentryTransport extends transports.Stream {
+  // categories that should always be sent to Sentry regardless of log level
+  private alwaysSendCategories = new Set(['stats']);
+
   log(info: any, callback: () => void) {
     setImmediate(() => this.emit('logged', info));
 
-    if (info.level === 'error') {
-      if (info.error instanceof Error) {
-        Sentry.captureException(info.error);
+    const { level, message, error, category, ...rest } = info;
+    const shouldForceSend =
+      category && this.alwaysSendCategories.has(category);
+
+    // Send to Sentry if level is 'error', OR category is in alwaysSendCategories
+    if (level === 'error' || shouldForceSend) {
+      const sentryLevel = level === 'error' ? 'error' : 'error'; // keep 'error' so it bypasses prod filter
+      const tags = { category: category || 'uncategorized' };
+
+      if (error instanceof Error) {
+        Sentry.captureException(error, { level: sentryLevel, tags, extra: rest });
       } else {
-        // fallback to message if error is not passed properly
-        Sentry.captureMessage(info.message || JSON.stringify(info), 'error');
+        Sentry.captureMessage(message || JSON.stringify(info), {
+          level: sentryLevel,
+          tags,
+          extra: rest
+        });
       }
-      callback();
-      return true;
     }
+    callback();
+    return true;
   }
 }
 

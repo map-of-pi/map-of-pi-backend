@@ -6,6 +6,10 @@ import { verifyAdminToken } from "../middlewares/verifyToken";
 /**
  * @swagger
  * components:
+ *   securitySchemes:
+ *     AdminPasswordAuth:
+ *       type: http
+ *       scheme: basic
  *   schemas:
  *     ToggleSchema:
  *       type: object

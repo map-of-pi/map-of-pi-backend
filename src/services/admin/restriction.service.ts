@@ -1,18 +1,18 @@
-import SanctionedRegion from "../../models/misc/SanctionedRegion";
+import SanctionedGeoBoundary from "../../models/misc/SanctionedGeoBoundary";
 
-export const validateSellerLocation = async (longitude: number, latitude: number)  => {
+export const validateSellerLocation = async (longitude: number, latitude: number) => {
 	const sellCenter = {
 		type: 'Point' as const,
 		coordinates: [longitude, latitude],
 	};
 
-	const isSanctionedLocation = await SanctionedRegion.findOne({
-		boundary: {
+	const sanctionedLocation = await SanctionedGeoBoundary.findOne({
+		geometry: {
 			$geoIntersects: {
 				$geometry: sellCenter
 			}
 		}
 	}).exec();
 
-	return isSanctionedLocation;
+	return sanctionedLocation;
 };

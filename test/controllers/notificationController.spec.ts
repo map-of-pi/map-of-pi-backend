@@ -85,7 +85,7 @@ describe('notificationController', () => {
       };
     });
 
-    it('should get notifications (pagination provided) and return [200] on success', async () => {
+    it('should get all notifications (pagination provided) and return [200] on success', async () => {
       const mockNotifications = [
         { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: false, reason: 'TEST_REASON_A' },
         { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_B' }
@@ -95,25 +95,60 @@ describe('notificationController', () => {
 
       await getNotifications(req, res);
 
-      expect(notificationService.getNotifications).toHaveBeenCalledWith('0a0a0a-0a0a-0a0a', 5, 10);
+      expect(notificationService.getNotifications).toHaveBeenCalledWith('0a0a0a-0a0a-0a0a', 5, 10, undefined);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(mockNotifications);
     });
 
-    it('should get notifications (pagination not provided) and return [200] on success', async () => {
-      req.query = { }; // no skip + limit params
+    it('should get only cleared notifications (pagination provided) and return [200] on success', async () => {
+      req.query.status = 'cleared';
       const mockNotifications = [
         { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: false, reason: 'TEST_REASON_A' },
         { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_B' },
         { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_C' },
-        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_D' },
       ];
       
       (notificationService.getNotifications as jest.Mock).mockResolvedValue(mockNotifications);
 
       await getNotifications(req, res);
 
-      expect(notificationService.getNotifications).toHaveBeenCalledWith('0a0a0a-0a0a-0a0a', 0, 20);
+      expect(notificationService.getNotifications).toHaveBeenCalledWith('0a0a0a-0a0a-0a0a', 5, 10, 'cleared');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockNotifications);
+    });
+
+    it('should get only uncleared notifications (pagination provided) and return [200] on success', async () => {
+      req.query.status = 'uncleared';
+      const mockNotifications = [
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: false, reason: 'TEST_REASON_A' },
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_B' },
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_C' },
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: false, reason: 'TEST_REASON_D' },
+      ];
+      
+      (notificationService.getNotifications as jest.Mock).mockResolvedValue(mockNotifications);
+
+      await getNotifications(req, res);
+
+      expect(notificationService.getNotifications).toHaveBeenCalledWith('0a0a0a-0a0a-0a0a', 5, 10, 'uncleared');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockNotifications);
+    });
+
+    it('should get all notifications for invalid status (pagination provided) and return [200] on success', async () => {
+      req.query.status = 'invalid';
+      const mockNotifications = [
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: false, reason: 'TEST_REASON_A' },
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_B' },
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: true, reason: 'TEST_REASON_C' },
+        { pi_uid: '0a0a0a-0a0a-0a0a', is_cleared: false, reason: 'TEST_REASON_D' },
+      ];
+      
+      (notificationService.getNotifications as jest.Mock).mockResolvedValue(mockNotifications);
+
+      await getNotifications(req, res);
+
+      expect(notificationService.getNotifications).toHaveBeenCalledWith('0a0a0a-0a0a-0a0a', 5, 10, undefined);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(mockNotifications);
     });
