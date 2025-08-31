@@ -50,6 +50,13 @@ const notificationRoutes = Router();
  *           type: integer
  *           default: 20
  *         description: Maximum number of notifications to return
+ *       - name: status
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [cleared, uncleared]
+ *         description: Filter notifications by cleared vs uncleared status, if applicable.
  *     responses:
  *       200:
  *         description: Successful response

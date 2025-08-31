@@ -47,25 +47,33 @@ describe('getNotifications function', () => {
   const skip = 5;
   const limit = 10;
 
-  it('should return a list of notifications associated with the user', async () => {
-    const mockNotifications = [
-      { pi_uid, is_cleared: false, reason: 'TEST_REASON_A' },
-      { pi_uid, is_cleared: true, reason: 'TEST_REASON_B' }
-    ];
-
+  function mockNotificationQuery(mockResult: any) {
     const sortMock = jest.fn().mockReturnThis();
     const skipMock = jest.fn().mockReturnThis();
     const limitMock = jest.fn().mockReturnThis();
-    const execMock = jest.fn().mockResolvedValue(mockNotifications);
-
+    const execMock = jest.fn().mockResolvedValue(mockResult);
+  
     (Notification.find as jest.Mock).mockReturnValue({
       sort: sortMock,
       skip: skipMock,
       limit: limitMock,
       exec: execMock,
     });
+  
+    return { sortMock, skipMock, limitMock, execMock };
+  }
 
-    const existingNotifications = await getNotifications(pi_uid, skip, limit);
+  it('should return a list of notifications associated with the user', async () => {
+    const mockNotifications = [
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_A' },
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_B' },
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_C' },
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_D' }
+    ];
+
+    const { sortMock, skipMock, limitMock, execMock } = mockNotificationQuery(mockNotifications);
+
+    const existingNotifications = await getNotifications(pi_uid, skip, limit, undefined);
     
     expect(Notification.find).toHaveBeenCalledWith({ pi_uid });
     expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
@@ -73,6 +81,40 @@ describe('getNotifications function', () => {
     expect(limitMock).toHaveBeenCalledWith(limit);
     expect(execMock).toHaveBeenCalled();
     expect(existingNotifications).toEqual(mockNotifications);
+  });
+
+  it('should filter notifications for status cleared', async () => {
+    const mockClearedNotifications = [
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_B' },
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_C' }
+    ];
+
+    const { sortMock, skipMock, limitMock, execMock } = mockNotificationQuery(mockClearedNotifications);
+
+    const result = await getNotifications(pi_uid, skip, limit, 'cleared');
+    expect(Notification.find).toHaveBeenCalledWith({ pi_uid, is_cleared: true });
+    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(skipMock).toHaveBeenCalledWith(skip);
+    expect(limitMock).toHaveBeenCalledWith(limit);
+    expect(execMock).toHaveBeenCalled();
+    expect(result).toEqual(mockClearedNotifications);
+  });
+
+  it('should filter notifications for status uncleared', async () => {
+    const mockUnclearedNotifications = [
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_A' },
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_D' }
+    ];
+
+    const { sortMock, skipMock, limitMock, execMock } = mockNotificationQuery(mockUnclearedNotifications);
+
+    const result = await getNotifications(pi_uid, skip, limit, 'uncleared');
+    expect(Notification.find).toHaveBeenCalledWith({ pi_uid, is_cleared: false });
+    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(skipMock).toHaveBeenCalledWith(skip);
+    expect(limitMock).toHaveBeenCalledWith(limit);
+    expect(execMock).toHaveBeenCalled();
+    expect(result).toEqual(mockUnclearedNotifications);
   });
 
   it('should throw an error if getting notifications fail', async () => {

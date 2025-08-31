@@ -1,4 +1,5 @@
 import mongoose, { Types } from "mongoose";
+import { getUpdatedStockLevel } from "../../src/helpers/order";
 import Order from "../../src/models/Order";
 import OrderItem from "../../src/models/OrderItem";
 import Seller from "../../src/models/Seller";
@@ -8,8 +9,7 @@ import { FulfillmentType } from "../../src/models/enums/fulfillmentType";
 import { OrderStatusType } from "../../src/models/enums/orderStatusType";
 import { OrderItemStatusType } from "../../src/models/enums/orderItemStatusType";
 import { StockLevelType } from "../../src/models/enums/stockLevelType";
-import { getUpdatedStockLevel } from "../../src/helpers/order";
-import { IUser, NewOrder, PickedItems } from "../../src/types";
+import { NewOrder, PickedItems } from "../../src/types";
 import { 
   createOrder,
   deleteOrderById,
@@ -40,12 +40,15 @@ describe('createOrder function', () => {
     jest.spyOn(mongoose, 'startSession').mockResolvedValue(mockSession as any);
   });
 
-  const mockUser = { pi_uid: '0a0a0a-0a0a-0a0a' } as IUser;
-  const mockSeller = { seller_id: 'sellerId_TEST' };
+  const orderItems: PickedItems[] = [
+    { itemId: 'item1_TEST', quantity: 1 },
+    { itemId: 'item2_TEST', quantity: 5 }
+  ];
 
   const orderData: NewOrder = {
-    buyerId: 'buyerId_TEST',
-    sellerId: 'sellerId_TEST',
+    orderItems,
+    buyerPiUid: 'buyerId_TEST',
+    sellerPiUid: 'sellerId_TEST',
     paymentId: 'paymentId_TEST',
     totalAmount: '100',
     status: OrderStatusType.Pending,
@@ -53,11 +56,6 @@ describe('createOrder function', () => {
     sellerFulfillmentDescription: 'Ships in 2 days',
     buyerFulfillmentDescription: 'Leave at door',
   };
-
-  const orderItems: PickedItems[] = [
-    { itemId: 'item1_TEST', quantity: 1 },
-    { itemId: 'item2_TEST', quantity: 5 }
-  ];
 
   it('should create order with stock update and process an order successfully', async () => {
     const mockSavedOrder = { 
@@ -67,8 +65,13 @@ describe('createOrder function', () => {
       is_fulfilled: false, 
     };
 
-    (Seller.findOne as jest.Mock).mockResolvedValue(mockSeller);
-    (User.findOne as jest.Mock).mockResolvedValue(mockUser);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid })
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid })
+    });
+
     // Mock Order.save()
     const mockSave = jest.fn().mockResolvedValue(mockSavedOrder);
     (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
@@ -95,12 +98,12 @@ describe('createOrder function', () => {
       }
     ] as any); 
 
-    const result = await createOrder(orderData, orderItems, mockUser);
+    const result = await createOrder(orderData);
 
     expect(mongoose.startSession).toHaveBeenCalled();
     expect(mockSession.startTransaction).toHaveBeenCalled();
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(getUpdatedStockLevel).toHaveBeenCalledTimes(2);
     expect(getUpdatedStockLevel).toHaveBeenCalledWith(StockLevelType.AVAILABLE_1, 1, 'item1_TEST');
     expect(OrderItem.insertMany).toHaveBeenCalledWith(
@@ -128,8 +131,13 @@ describe('createOrder function', () => {
       is_fulfilled: false, 
     };
 
-    (Seller.findOne as jest.Mock).mockResolvedValue(mockSeller);
-    (User.findOne as jest.Mock).mockResolvedValue(mockUser);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid })
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid })
+    });
+
     // Mock Order.save()
     const mockSave = jest.fn().mockResolvedValue(mockSavedOrder);
     (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
@@ -156,12 +164,12 @@ describe('createOrder function', () => {
       }
     ] as any); 
 
-    const result = await createOrder(orderData, orderItems, mockUser);
+    const result = await createOrder(orderData);
 
     expect(mongoose.startSession).toHaveBeenCalled();
     expect(mockSession.startTransaction).toHaveBeenCalled();
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(getUpdatedStockLevel).toHaveBeenCalledWith(StockLevelType.MANY_AVAILABLE, 5, 'item2_TEST');
     expect(OrderItem.insertMany).toHaveBeenCalledWith(
       expect.arrayContaining([
@@ -181,40 +189,52 @@ describe('createOrder function', () => {
   });
 
   it('should throw an error if buyer is not found', async () => {
-    (Seller.findOne as jest.Mock).mockResolvedValue(mockSeller);
-    (User.findOne as jest.Mock).mockResolvedValue(null);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid })
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue(null)
+    });
 
-    await expect(createOrder(orderData, orderItems, mockUser)).rejects.toThrow('Seller or buyer not found');
+    await expect(createOrder(orderData)).rejects.toThrow('Seller or buyer not found');
   
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(mockSession.abortTransaction).toHaveBeenCalled();
     expect(mockSession.endSession).toHaveBeenCalled();
   });
 
   it('should throw an error if seller is not found', async () => {
-    (Seller.findOne as jest.Mock).mockResolvedValue(null);
-    (User.findOne as jest.Mock).mockResolvedValue(mockUser);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue(null)
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid })
+    });
 
-    await expect(createOrder(orderData, orderItems, mockUser)).rejects.toThrow('Seller or buyer not found');
+    await expect(createOrder(orderData)).rejects.toThrow('Seller or buyer not found');
   
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(mockSession.abortTransaction).toHaveBeenCalled();
     expect(mockSession.endSession).toHaveBeenCalled();
   });
 
   it('should throw an error if order.save() returns null', async () => {
-    (Seller.findOne as jest.Mock).mockResolvedValue(mockSeller);
-    (User.findOne as jest.Mock).mockResolvedValue(mockUser);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid })
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid })
+    });
 
     const mockSave = jest.fn().mockResolvedValue(null);
     (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
   
-    await expect(createOrder(orderData, orderItems, mockUser)).rejects.toThrow('Failed to create order');
+    await expect(createOrder(orderData)).rejects.toThrow('Failed to create order');
   
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(mockSession.abortTransaction).toHaveBeenCalled();
     expect(mockSession.endSession).toHaveBeenCalled();
   });
@@ -227,8 +247,13 @@ describe('createOrder function', () => {
       is_fulfilled: false, 
     };
 
-    (Seller.findOne as jest.Mock).mockResolvedValue(mockSeller);
-    (User.findOne as jest.Mock).mockResolvedValue(mockUser);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid })
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid })
+    });
+
     const mockSave = jest.fn().mockResolvedValue(mockSavedOrder);
     (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
   
@@ -240,10 +265,10 @@ describe('createOrder function', () => {
       ]),
     } as any);
   
-    await expect(createOrder(orderData, orderItems, mockUser)).rejects.toThrow('Failed to find associated seller item');
+    await expect(createOrder(orderData)).rejects.toThrow('Failed to find associated seller item');
   
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(mockSession.abortTransaction).toHaveBeenCalled();
     expect(mockSession.endSession).toHaveBeenCalled();
   });
@@ -256,8 +281,13 @@ describe('createOrder function', () => {
       is_fulfilled: false, 
     };
 
-    (Seller.findOne as jest.Mock).mockResolvedValue(mockSeller);
-    (User.findOne as jest.Mock).mockResolvedValue(mockUser);
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid })
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid })
+    });
+
     const mockSave = jest.fn().mockResolvedValue(mockSavedOrder);
     (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
   
@@ -270,10 +300,10 @@ describe('createOrder function', () => {
   
     (OrderItem.insertMany as jest.Mock).mockRejectedValue(new Error('Mock database error'));
   
-    await expect(createOrder(orderData, orderItems, mockUser)).rejects.toThrow('Mock database error');
+    await expect(createOrder(orderData)).rejects.toThrow('Mock database error');
     
-    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerId });
-    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
+    expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
+    expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
     expect(mockSession.abortTransaction).toHaveBeenCalled();
     expect(mockSession.endSession).toHaveBeenCalled();
   });
@@ -363,11 +393,13 @@ describe('markAsPaidOrder function', () => {
   });
 
   it('should throw an error if updated order is not found', async () => {
+    const mockError = new Error('Failed to mark as paid order');
+
     (Order.findByIdAndUpdate as jest.Mock).mockReturnValue({
       exec: jest.fn().mockResolvedValue(null)
     });
 
-    await expect(markAsPaidOrder(mockOrderId)).rejects.toThrow('Failed to update paid order');
+    await expect(markAsPaidOrder(mockOrderId)).rejects.toThrow(mockError);
   });
 
   it('should throw an error if the paid order update fails', async () => {

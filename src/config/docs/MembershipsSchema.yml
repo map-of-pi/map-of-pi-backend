@@ -1,0 +1,48 @@
+components:
+  schemas:
+    MembershipRs:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: 666bbae4a05bcc3d8dfab566
+        user_id:
+          type: string
+          example: 999bbae4a05bcc3d8dfab599
+        pi_uid:
+          type: string
+          example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890c9
+        membership_class:
+          $ref: '/api/docs/enum/MembershipClassType.yml#/components/schemas/MembershipClassType'
+        mappi_balance:
+          type: number
+          example: 100
+        membership_expiry_date:
+          type: string
+          format: date-time
+          example: 2025-08-28T13:05:45.511Z
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-07-28T00:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-07-28T00:00:00.000Z"
+
+    MembershipTiers:
+      type: object
+      properties:
+        value:
+          $ref: '/api/docs/enum/MembershipClassType.yml#/components/schemas/MembershipClassType'
+        cost:
+          type: number
+          format: float
+          example: 0
+        duration:
+          type: integer
+          nullable: true
+          example: null
+        mappi_allowance:
+          type: integer
+          example: 0

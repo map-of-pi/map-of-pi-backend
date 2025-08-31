@@ -70,12 +70,10 @@ describe('paymentController', () => {
   });
 
   describe('onPaymentApproval function', () => {
-    const mockUser = { pi_username: 'piUID1_TEST' };
     const mockPaymentId = 'paymentId1_TEST';
 
     beforeEach(() => {
       req = {
-        currentUser: mockUser,
         body: { paymentId: mockPaymentId }
       };
       res = {
@@ -94,7 +92,7 @@ describe('paymentController', () => {
 
       await onPaymentApproval(req, res);
 
-      expect(processPaymentApproval).toHaveBeenCalledWith(mockPaymentId, mockUser);
+      expect(processPaymentApproval).toHaveBeenCalledWith(mockPaymentId);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(mockProcessedResult);
     });
@@ -105,7 +103,7 @@ describe('paymentController', () => {
   
       await onPaymentApproval(req, res);
   
-      expect(processPaymentApproval).toHaveBeenCalledWith(mockPaymentId, mockUser);
+      expect(processPaymentApproval).toHaveBeenCalledWith(mockPaymentId);
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ 
         success: false,

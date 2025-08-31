@@ -12,9 +12,22 @@ export const addNotification = async (pi_uid: string, reason: string): Promise<I
   }
 };
 
-export const getNotifications = async (pi_uid: string, skip: number, limit: number): Promise<INotification[]> => {
+export const getNotifications = async (
+  pi_uid: string, 
+  skip: number, 
+  limit: number,
+  status?: 'cleared' | 'uncleared'
+): Promise<INotification[]> => {
   try {
-    const notifications = await Notification.find({ pi_uid })
+    const filter: any = { pi_uid };
+
+    if (status === 'cleared') {
+      filter.is_cleared = true;
+    } else if (status === 'uncleared') {
+      filter.is_cleared = false;
+    }
+
+    const notifications = await Notification.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
