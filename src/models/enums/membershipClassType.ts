@@ -29,7 +29,7 @@ export const membershipTiers = {
   tier2: {
     CLASS: MembershipClassType.GREEN,
     MAPPI_ALLOWANCE: 20,
-    COST: 1.5,
+    COST: 2,
     DURATION: 4,
     RANK: 2
   },
