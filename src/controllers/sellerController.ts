@@ -137,11 +137,11 @@ export const addOrUpdateSellerItem = async (req: Request, res: Response) => {
 
     logger.debug('Form data being sent:', { formData });
     // Add or update Item
-    const sellerItem = await sellerService.addOrUpdateSellerItem(currentSeller, formData);
+    const item = await sellerService.addOrUpdateSellerItem(currentSeller, formData);
     logger.info(`Added/ updated seller item for seller ${currentSeller.seller_id}`);
 
     // Send response
-    return res.status(200).json({ sellerItem: sellerItem });
+    return res.status(200).json(item); 
   } catch (error) {
     logger.error(`Failed to add or update seller item for userID ${currentSeller.seller_id}:`, error);
     return res.status(500).json({

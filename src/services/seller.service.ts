@@ -11,6 +11,8 @@ import { getUserSettingsById } from "./userSettings.service";
 import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem } from "../types";
 
 import logger from "../config/loggingConfig";
+import { computeNewExpiryDate, getChangeInWeeks } from '../helpers/sellerItem';
+import { deductMappiBalance } from './membership.service';
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {
@@ -310,15 +312,8 @@ export const getAllSellerItems = async (
 export const addOrUpdateSellerItem = async (
   seller: ISeller,
   item: ISellerItem
-): Promise<ISellerItem | null> => {
+): Promise<{sellerItem: ISellerItem | null, consumedMappi: number} | null> => {
   try {
-    const today = new Date();
-
-    // Calculate expiration date based on duration (defaults to 1 week)
-    const duration = Number(item.duration) || 1;
-    const durationInMs = duration * 7 * 24 * 60 * 60 * 1000;
-    const expiredBy = new Date(today.getTime() + durationInMs);
-
     logger.debug(`Seller data: ${ seller }`);
 
     // Ensure unique identifier is used for finding existing items
@@ -326,22 +321,37 @@ export const addOrUpdateSellerItem = async (
       _id: item._id || undefined,
       seller_id: seller.seller_id,
     };
+    let consumedMappi = 0;
+    let addedItem = null;
 
     // Attempt to find the existing item
     const existingItem = await SellerItem.findOne(query);
 
     if (existingItem) {
+      const changeInDuration = getChangeInWeeks(existingItem, item);
+      logger.debug(`Change in duration (weeks): ${ changeInDuration }`);
+
+      const newExpiry = computeNewExpiryDate(existingItem, item);
+      logger.debug(`Computed new expiry date: ${ newExpiry }`);
+
       // Update the existing item
       existingItem.set({
         ...item,
-        expired_by: expiredBy,
+        duration: existingItem.duration + changeInDuration,
+        expired_by: newExpiry,
         image: item.image || existingItem.image, // Use existing image if a new one isn't provided
       });
-      const updatedItem = await existingItem.save();
-
-      logger.info('Item updated successfully:', { updatedItem });
-      return updatedItem;
+      addedItem = await existingItem.save();
+      
+      // logger.info('Item updated successfully:', { addedItem });
+      consumedMappi = changeInDuration;
     } else {
+      const now = new Date();
+
+      // Calculate expiration date based on duration (defaults to 1 week)
+      const duration = Number(item.duration) || 1;
+      const expiredBy = new Date(now.getTime() + duration * 7 * 24 * 60 * 60 * 1000);
+
       // Ensure item has a unique identifier for creation
       const newItemId = item._id || new mongoose.Types.ObjectId().toString();
 
@@ -358,11 +368,15 @@ export const addOrUpdateSellerItem = async (
         expired_by: expiredBy,
       });
 
-      await newItem.save();
+      addedItem = await newItem.save();
 
       logger.info('Item created successfully:', { newItem });
-      return newItem;
+      consumedMappi = duration;
     }
+    // Deduct consumed mappi
+    consumedMappi > 0 ? deductMappiBalance(seller.seller_id, consumedMappi): null
+
+    return {sellerItem: addedItem, consumedMappi: -consumedMappi}
   } catch (error) {
     logger.error(`Failed to add or update seller item for sellerID ${ seller.seller_id}: ${ error }`);
     throw error;
