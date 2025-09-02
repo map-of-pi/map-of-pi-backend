@@ -15,6 +15,7 @@ import {
 import { IMembership, IUser, MembershipOption } from "../types";
 
 import logger from "../config/loggingConfig";
+import { MappiDeductionError } from "../errors/MappiDeductionError";
 
 /* Helper functions */
 const handleSingleMappiPurchase = async (
@@ -282,17 +283,16 @@ export const applyMembershipChange = async (
 
 export const deductMappiBalance = async (pi_uid: string, amount: number): Promise<number> => {
   try {
-    if (amount===0) return 0;
-    // Find membership and ensure enough balance
+    if (amount === 0) return 0;
+
     const membership = await Membership.findOne({ pi_uid });
     if (!membership) {
-      throw new Error('Membership not found');
+      throw new MappiDeductionError(pi_uid, amount, 'Membership not found');
     }
     if ((membership.mappi_balance ?? 0) < amount) {
-      throw new Error('Insufficient Mappi balance');
+      throw new MappiDeductionError(pi_uid, amount, 'Insufficient Mappi balance');
     }
 
-    // Deduct Mappi atomically
     const updatedMembership = await Membership.findOneAndUpdate(
       { pi_uid },
       { $inc: { mappi_balance: -amount } },
@@ -300,13 +300,18 @@ export const deductMappiBalance = async (pi_uid: string, amount: number): Promis
     ).exec();
 
     if (!updatedMembership) {
-      throw new Error('Failed to deduct Mappi balance');
+      throw new MappiDeductionError(pi_uid, amount, 'Failed to deduct Mappi balance');
     }
 
-    logger.info("consumed Mappi: ", {amount});
+    logger.info("consumed Mappi: ", { amount });
     return amount;
-  } catch (error) {
-    logger.error(`Failed to deduct Mappi balance for piUID ${pi_uid}: ${error}`);
-    throw error;
+  } catch (error: any) {
+    if (error instanceof MappiDeductionError) {
+      logger.error(`MappiDeductionError for piUID ${error.pi_uid}: ${error.message}`);
+      throw error;
+    } else {
+      logger.error(`Unexpected error during Mappi deduction for piUID ${pi_uid}: ${error.message || error}`);
+      throw new MappiDeductionError(pi_uid, amount, error.message || 'Unknown error');
+    }
   }
 };

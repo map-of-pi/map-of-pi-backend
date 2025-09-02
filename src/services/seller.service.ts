@@ -13,6 +13,7 @@ import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem } from 
 import logger from "../config/loggingConfig";
 import { computeNewExpiryDate, getChangeInWeeks } from '../helpers/sellerItem';
 import { deductMappiBalance } from './membership.service';
+import { MappiDeductionError } from '../errors/MappiDeductionError';
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {
@@ -334,10 +335,7 @@ export const addOrUpdateSellerItem = async (
 
       if (changeInWeeks !== 0) {
         // Deduct/add mappi only if duration changes
-        const mappiResult = await deductMappiBalance(seller.seller_id, changeInWeeks);
-        if (!mappiResult) {
-          throw new Error("Insufficient Mappi balance to adjust item duration.");
-        }
+        await deductMappiBalance(seller.seller_id, changeInWeeks);
         consumedMappi = -changeInWeeks;
       }
 
@@ -366,10 +364,7 @@ export const addOrUpdateSellerItem = async (
       const expiredBy = new Date(now.getTime() + duration * 7 * 24 * 60 * 60 * 1000);
 
       // Deduct mappi for new item
-      const mappiResult = await deductMappiBalance(seller.seller_id, duration);
-      if (!mappiResult) {
-        throw new Error("Insufficient Mappi balance to create item.");
-      }
+      await deductMappiBalance(seller.seller_id, duration);
       consumedMappi = -duration;
 
       // Create new item
@@ -389,9 +384,14 @@ export const addOrUpdateSellerItem = async (
     }
 
     return { sellerItem: savedItem, consumedMappi };
-  } catch (error) {
-    logger.error(`Failed to add or update seller item for sellerID ${seller.seller_id}: ${error}`);
-    throw error;
+  } catch (error: any) {
+    if (error instanceof MappiDeductionError) {
+      logger.error(`MappiDeductionError for piUID ${error.pi_uid}: ${error.message}`);
+      throw error;
+    } else {
+      logger.error(`Failed to add or update seller item for sellerID ${seller.seller_id}: ${error}`);
+      throw error;
+    }
   }
 };
 
