@@ -280,8 +280,9 @@ export const applyMembershipChange = async (
   }
 };
 
-export const deductMappiBalance = async (pi_uid: string, amount: number) => {
+export const deductMappiBalance = async (pi_uid: string, amount: number): Promise<number> => {
   try {
+    if (amount===0) return 0;
     // Find membership and ensure enough balance
     const membership = await Membership.findOne({ pi_uid });
     if (!membership) {
@@ -302,7 +303,8 @@ export const deductMappiBalance = async (pi_uid: string, amount: number) => {
       throw new Error('Failed to deduct Mappi balance');
     }
 
-    return updatedMembership;
+    logger.info("consumed Mappi: ", {amount});
+    return amount;
   } catch (error) {
     logger.error(`Failed to deduct Mappi balance for piUID ${pi_uid}: ${error}`);
     throw error;
