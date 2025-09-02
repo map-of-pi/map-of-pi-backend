@@ -93,7 +93,11 @@ export const createOrder = async (
     }
 
     /* Step 5: Deduct single mappi for order checkout*/
-    await deductMappiBalance(orderData.buyerPiUid, 1);
+    const deductedMappi = await deductMappiBalance(orderData.buyerPiUid, 1);
+    if (!deductedMappi) {
+      logger.error(`Failed to deduct mappi balance for buyer Pi UID: ${ orderData.buyerPiUid }`);
+      throw new Error('Failed to deduct mappi balance');
+    }
 
     /* Step 6: Commit the transaction */
     await session.commitTransaction();
