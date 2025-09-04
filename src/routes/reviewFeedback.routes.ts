@@ -159,7 +159,20 @@ reviewFeedbackRoutes.post(
  *       content:
  *         multipart/form-data:
  *           schema:
- *             $ref: '/api/docs/ReviewFeedbackSchema.yml#/components/schemas/UpdateReviewRq'
+ *             type: object
+ *             properties:
+ *               comment:
+ *                 type: string
+ *                 example: This is a sample updated review comment.
+ *               rating:
+ *                 $ref: '/api/docs/enum/RatingScale.yml#/components/schemas/RatingScale'
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 example: http://example.com/new-image.jpg
+ *             required:
+ *               - comment
+ *               - rating
  *     responses:
  *       200:
  *         description: Successful response
