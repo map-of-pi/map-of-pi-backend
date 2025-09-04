@@ -73,43 +73,6 @@ notificationRoutes.get("/", verifyToken, notificationController.getNotifications
 
 /**
  * @swagger
- * /api/v1/notifications/:
- *   post:
- *     tags: 
- *      - Notification
- *     summary: Create a new notification *
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *                 example: This is a sample reason for notification.
- *     responses:
- *       200:
- *         description: Successful response
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Notification created successfully
- *                 notification:
- *                   $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Internal server error
- */
-notificationRoutes.post("/", verifyToken, notificationController.createNotification);
-
-/**
- * @swagger
  * /api/v1/notifications/count:
  *   get:
  *     tags:
