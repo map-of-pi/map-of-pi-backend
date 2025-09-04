@@ -71,7 +71,7 @@ describe('notificationController', () => {
   describe('getNotifications function', () => {
     beforeEach(() => {
       req = {
-        params: { 
+        currentUser: { 
           pi_uid: '0a0a0a-0a0a-0a0a',
         },
         query : {

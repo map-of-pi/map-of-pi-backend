@@ -20,11 +20,11 @@ const toggleSchema = new Schema<IToggle>(
     },
   },
   {
-    timestamps: true, // Automatically creates createdAt and updatedAt
+    timestamps: true, // Creates createdAt and updatedAt
     toJSON: {
       transform: function (doc, ret) {
-        delete ret._id;
-        delete ret.__v;
+        delete (ret as any)._id;
+        delete (ret as any).__v;
         return ret;
       }
     }

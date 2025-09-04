@@ -60,3 +60,24 @@ export const toggleNotificationStatus = async (notification_id: string): Promise
     throw error;
   }
 };
+
+export const countNotifications = async ({
+  pi_uid,
+  status,
+}: {
+  pi_uid: string;
+  status?: 'cleared' | 'uncleared';
+}): Promise<number> => {
+  try {
+    const query: any = { pi_uid };
+
+    if (status === 'cleared') query.is_cleared = true;
+    if (status === 'uncleared') query.is_cleared = false;
+
+    const count = await Notification.countDocuments(query);
+    return count;
+  } catch (error: any) {
+    logger.error(`Failed to count notifications for piUID ${pi_uid}: ${error.message}`);
+    throw error;
+  }
+};

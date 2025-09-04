@@ -69,44 +69,40 @@ const notificationRoutes = Router();
  *       500:
  *         description: Internal server error
  */
-notificationRoutes.get("/:pi_uid", notificationController.getNotifications);
+notificationRoutes.get("/", verifyToken, notificationController.getNotifications);
 
 /**
  * @swagger
- * /api/v1/notifications/:
- *   post:
- *     tags: 
- *      - Notification
- *     summary: Create a new notification *
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *                 example: This is a sample reason for notification.
+ * /api/v1/notifications/count:
+ *   get:
+ *     tags:
+ *       - Notification
+ *     summary: Get the count of notifications filtered by status (cleared or uncleared)
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [cleared, uncleared]
+ *         required: false
+ *         description: Filter notifications by status
  *     responses:
  *       200:
- *         description: Successful response
+ *         description: Successful response with notification count
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message:
- *                   type: string
- *                   example: Notification created successfully
- *                 notification:
- *                   $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
+ *                 count:
+ *                   type: integer
+ *                   example: 5
  *       401:
  *         description: Unauthorized
  *       500:
  *         description: Internal server error
  */
-notificationRoutes.post("/", verifyToken, notificationController.createNotification);
+notificationRoutes.get("/count", verifyToken, notificationController.getNotificationsCount);
 
 /**
  * @swagger
