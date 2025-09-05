@@ -318,10 +318,10 @@ export const addOrUpdateSellerItem = async (
     logger.debug(`Seller data: ${seller.seller_id}`);
 
     // Find existing item by _id and seller_id
-    const query: Record<string, any> = {
+     const query = {
+      _id: item._id || undefined,
       seller_id: seller.seller_id,
     };
-    if (item._id) query._id = item._id;
 
     const existingItem = await SellerItem.findOne(query);
 
@@ -367,8 +367,11 @@ export const addOrUpdateSellerItem = async (
       await deductMappiBalance(seller.seller_id, duration);
       consumedMappi = -duration;
 
-      // Create new item
+      // Ensure item has a unique identifier for creation
+      const newItemId = item._id || new mongoose.Types.ObjectId().toString();
+
       const newItem = new SellerItem({
+        _id: newItemId,
         seller_id: seller.seller_id,
         name: item.name?.trim() ?? '',
         description: item.description?.trim() ?? '',
