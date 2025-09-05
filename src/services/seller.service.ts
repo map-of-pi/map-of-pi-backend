@@ -11,6 +11,9 @@ import { getUserSettingsById } from "./userSettings.service";
 import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem } from "../types";
 
 import logger from "../config/loggingConfig";
+import { computeNewExpiryDate, getChangeInWeeks } from '../helpers/sellerItem';
+import { deductMappiBalance } from './membership.service';
+import { MappiDeductionError } from '../errors/MappiDeductionError';
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {
@@ -310,62 +313,88 @@ export const getAllSellerItems = async (
 export const addOrUpdateSellerItem = async (
   seller: ISeller,
   item: ISellerItem
-): Promise<ISellerItem | null> => {
+): Promise<{ sellerItem: ISellerItem | null, consumedMappi: number }> => {
   try {
-    const today = new Date();
+    logger.debug(`Seller data: ${seller.seller_id}`);
 
-    // Calculate expiration date based on duration (defaults to 1 week)
-    const duration = Number(item.duration) || 1;
-    const durationInMs = duration * 7 * 24 * 60 * 60 * 1000;
-    const expiredBy = new Date(today.getTime() + durationInMs);
-
-    logger.debug(`Seller data: ${ seller }`);
-
-    // Ensure unique identifier is used for finding existing items
-    const query = {
+    // Find existing item by _id and seller_id
+     const query = {
       _id: item._id || undefined,
       seller_id: seller.seller_id,
     };
 
-    // Attempt to find the existing item
     const existingItem = await SellerItem.findOne(query);
 
+    let consumedMappi = 0;
+    let savedItem: ISellerItem | null = null;
+
     if (existingItem) {
-      // Update the existing item
+      // --- Update existing item ---
+      const changeInWeeks = getChangeInWeeks(existingItem, item);
+      logger.info(`Change in duration (weeks): ${changeInWeeks}`);
+
+      if (changeInWeeks !== 0) {
+        // Deduct/add mappi only if duration changes
+        await deductMappiBalance(seller.seller_id, changeInWeeks);
+        consumedMappi = -changeInWeeks;
+      }
+
+      // Compute new expiry date
+      const newExpiry = computeNewExpiryDate(existingItem, item);
+      logger.debug(`Computed new expiry date: ${newExpiry}`);
+
+      // Update fields
       existingItem.set({
         ...item,
-        expired_by: expiredBy,
-        image: item.image || existingItem.image, // Use existing image if a new one isn't provided
+        duration: Math.max(Number(existingItem.duration) + changeInWeeks, 1),
+        expired_by: newExpiry,
+        image: item.image || existingItem.image,
+        price: item.price ?? existingItem.price,
+        stock_level: item.stock_level ?? existingItem.stock_level,
+        description: item.description ?? existingItem.description,
+        name: item.name ?? existingItem.name,
       });
-      const updatedItem = await existingItem.save();
 
-      logger.info('Item updated successfully:', { updatedItem });
-      return updatedItem;
+      savedItem = await existingItem.save();
+      logger.info('Seller item updated successfully', { id: savedItem._id });
     } else {
+      // --- Create new item ---
+      const now = new Date();
+      const duration = Math.max(Number(item.duration) || 1, 1);
+      const expiredBy = new Date(now.getTime() + duration * 7 * 24 * 60 * 60 * 1000);
+
+      // Deduct mappi for new item
+      await deductMappiBalance(seller.seller_id, duration);
+      consumedMappi = -duration;
+
       // Ensure item has a unique identifier for creation
       const newItemId = item._id || new mongoose.Types.ObjectId().toString();
 
-      // Create a new item
       const newItem = new SellerItem({
         _id: newItemId,
         seller_id: seller.seller_id,
-        name: item.name ? item.name.trim() : '',
-        description: item.description ? item.description.trim() : '',
-        price: parseFloat(item.price?.toString() || '0.01'), // Ensure valid price
-        stock_level: item.stock_level || StockLevelType.AVAILABLE_1,
-        duration: parseInt(item.duration?.toString() || '1'), // Ensure valid duration
-        image: item.image,
+        name: item.name?.trim() ?? '',
+        description: item.description?.trim() ?? '',
+        price: item.price ?? 0.01,
+        stock_level: item.stock_level ?? StockLevelType.AVAILABLE_1,
+        duration,
+        image: item.image ?? null,
         expired_by: expiredBy,
       });
 
-      await newItem.save();
-
-      logger.info('Item created successfully:', { newItem });
-      return newItem;
+      savedItem = await newItem.save();
+      logger.info('Seller item created successfully', { id: savedItem._id });
     }
-  } catch (error) {
-    logger.error(`Failed to add or update seller item for sellerID ${ seller.seller_id}: ${ error }`);
-    throw error;
+
+    return { sellerItem: savedItem, consumedMappi };
+  } catch (error: any) {
+    if (error instanceof MappiDeductionError) {
+      logger.error(`MappiDeductionError for piUID ${error.pi_uid}: ${error.message}`);
+      throw error;
+    } else {
+      logger.error(`Failed to add or update seller item for sellerID ${seller.seller_id}: ${error}`);
+      throw error;
+    }
   }
 };
 
