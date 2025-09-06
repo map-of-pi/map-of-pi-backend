@@ -1,10 +1,11 @@
+import { uploadImage } from "./misc/image.service";
 import { getUser } from "./user.service";
 import ReviewFeedback from "../models/ReviewFeedback";
+import User from "../models/User";
 import UserSettings from "../models/UserSettings";
 import { IReviewFeedback, IUser, IReviewFeedbackOutput, CompleteFeedback } from "../types";
 
 import logger from "../config/loggingConfig";
-import User from "../models/User";
 
 /**
   The value is set depending on the number of zero(0) ratings in the ReviewFeedback table where this user is review-receiver. 
@@ -200,36 +201,35 @@ export const updateReviewFeedback = async (
   reviewId: string,
   authUser: IUser,
   formData: any,
-  image?: string
+  file?: Express.Multer.File
 ): Promise<IReviewFeedback | null> => {
-  try {
-    const review = await ReviewFeedback.findById(reviewId);
+  const review = await ReviewFeedback.findById(reviewId);
 
-    if (!review) {
-      logger.warn(`Review with ID ${reviewId} not found for update.`);
-      return null;
-    }
-
-    // Ensure the authenticated user is the review owner
-    if (review.review_giver_id !== authUser.pi_uid) {
-      logger.warn(`User ${authUser.pi_uid} attempted to edit review ${reviewId} without permission.`);
-      throw new Error("Forbidden");
-    }
-
-    // Update fields if provided
-    if (formData.rating !== undefined) review.rating = formData.rating;
-    if (formData.comment !== undefined) review.comment = formData.comment;
-    if (image !== undefined) review.image = image;
-
-    await review.save();
-
-    // Recalculate trust meter rating for the receiver
-    await computeRatings(review.review_receiver_id);
-
-    logger.info(`Review ${reviewId} updated successfully by user ${authUser.pi_uid}`);
-    return review as IReviewFeedback;
-  } catch (error: any) {
-    logger.error(`Failed to update review ${reviewId}: ${error}`);
+  if (!review) {
+    const error = new Error(`Review with ID ${reviewId} not found`);
+    error.name = "NotFoundError";
     throw error;
   }
+
+  if (review.review_giver_id !== authUser.pi_uid) {
+    const error = new Error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
+    error.name = "ForbiddenError";
+    throw error;
+  }
+
+  // Update fields
+  if (formData.rating !== undefined) review.rating = formData.rating;
+  if (formData.comment !== undefined) review.comment = formData.comment;
+
+  // Handle image (keep existing unless a new file is uploaded)
+  if (file) {
+    review.image = await uploadImage(authUser.pi_uid, file, "review-feedback");
+  }
+
+  await review.save();
+
+  await computeRatings(review.review_receiver_id);
+
+  logger.info(`Review ${reviewId} updated successfully by user ${authUser.pi_uid}`);
+  return review as IReviewFeedback;
 };
