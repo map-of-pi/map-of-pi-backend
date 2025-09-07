@@ -27,13 +27,13 @@ export const getReviews = async (req: Request, res: Response) => {
 export const getSingleReviewById = async (req: Request, res: Response) => {
   const { review_id } = req.params;
   try {
-    const associatedReview = await reviewFeedbackService.getReviewFeedbackById(review_id);
-    if (!associatedReview) {
+    const existingReview = await reviewFeedbackService.getReviewFeedbackById(review_id);
+    if (!existingReview) {
       logger.warn(`Review with ID ${review_id} not found.`);
       return res.status(404).json({ message: "Review not found" });
     }
     logger.info(`Retrieved review with ID ${review_id}`);
-    res.status(200).json(associatedReview);
+    res.status(200).json(existingReview);
   } catch (error) {
     logger.error(`Failed to get review for reviewID ${ review_id }:`, error);
     return res.status(500).json({ message: 'An error occurred while getting single review; please try again later' });
@@ -63,5 +63,35 @@ export const addReview = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error(`Failed to add review for userID ${ req.currentUser?.pi_uid }:`, error);
     return res.status(500).json({ message: 'An error occurred while adding review; please try again later' });
+  }
+};
+
+export const updateReview = async (req: Request, res: Response) => {
+  try {
+    const authUser = req.currentUser;
+    const { review_id } = req.params;
+
+    if (!authUser) {
+      logger.warn("No authenticated user found for updating review.");
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const updatedReview = await reviewFeedbackService.updateReviewFeedback(
+      review_id,
+      authUser,
+      { comment: req.body.comment, rating: req.body.rating },
+      req.file
+    );
+
+    return res.status(200).json({ updatedReview });
+  } catch (error: any) {
+    if (error.name === "NotFoundError") {
+      return res.status(404).json({ message: error.message });
+    }
+    if (error.name === "ForbiddenError") {
+      return res.status(403).json({ message: error.message });
+    }
+    logger.error(`Failed to update review for userID ${req.currentUser?.pi_uid}:`, error);
+    return res.status(500).json({ message: 'An error occurred while updating review; please try again later' });
   }
 };

@@ -1,8 +1,18 @@
-import { addReviewFeedback, getReviewFeedback, getReviewFeedbackById } from '../../src/services/reviewFeedback.service';
 import ReviewFeedback from '../../src/models/ReviewFeedback';
 import User from '../../src/models/User';
 import UserSettings from '../../src/models/UserSettings';
+import { 
+  getReviewFeedback, 
+  getReviewFeedbackById, 
+  addReviewFeedback,
+  updateReviewFeedback 
+} from '../../src/services/reviewFeedback.service';
+import { uploadImage } from '../../src/services/misc/image.service';
 import { IReviewFeedback, IUser } from '../../src/types';
+
+jest.mock('../../src/services/misc/image.service', () => ({
+  uploadImage: jest.fn()
+}));
 
 describe('getReviewFeedback function', () => {
   // Helper function to convert Mongoose documents to plain objects
@@ -211,5 +221,112 @@ describe('addReviewFeedback function', () => {
 
     await addReviewAndAssert();
     await assertComputedRating(0);
+  });
+});
+
+describe('updateReviewFeedback function', () => {
+  const mockAuthUser = { pi_uid: 'piUID_TEST' };
+  const mockReviewId = 'reviewId_TEST';
+  let mockReview: any;
+
+  beforeEach(() => {
+    mockReview = {
+      _id: mockReviewId,
+      review_giver_id: 'piUID_TEST',
+      review_receiver_id: 'receiverId_TEST',
+      comment: 'Existing comment',
+      rating: 2,
+      image: 'example_existing_url',
+    };
+  });
+
+  it('should throw NotFoundError if review does not exist', async () => {
+    jest.spyOn(ReviewFeedback, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue(null)
+    } as any);
+
+    await expect(updateReviewFeedback(
+      mockReviewId, 
+      mockAuthUser as IUser, 
+      { rating: 5, comment: 'Updated comment', image: 'http://example.com/image_new.jpg' }))
+      .rejects.toMatchObject({ 
+        name: 'NotFoundError', 
+        message: `Review with ID ${mockReviewId} not found` 
+      });
+  });
+
+  it('should throw ForbiddenError if user is not the expected review giver', async () => {
+    mockReview.review_giver_id = 'giverId2_TEST';
+    
+    jest.spyOn(ReviewFeedback, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue(mockReview)
+    } as any);
+    
+    await expect(updateReviewFeedback(
+      mockReviewId, 
+      mockAuthUser as IUser, 
+      { rating: 5, comment: 'Updated comment', image: 'http://example.com/image_new.jpg' }))
+      .rejects.toMatchObject({ 
+        name: 'ForbiddenError', 
+        message: `User with ID: ${mockReview.review_giver_id} does not have permission to update this review` 
+      });
+  });
+
+  it('should update the existing review without new image', async () => {
+    const saveMock = jest.fn().mockResolvedValue(true);
+
+    jest.spyOn(ReviewFeedback, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue({
+        ...mockReview,
+        save: saveMock
+      })
+    } as any);
+    
+    const updatedFormData = { rating: 5, comment: 'Updated comment w/o image' };
+
+    const updatedReview = await updateReviewFeedback(
+      mockReviewId, 
+      mockAuthUser as IUser, 
+      updatedFormData
+    );
+
+    expect(updatedReview?.rating).toBe(updatedFormData.rating);
+    expect(updatedReview?.comment).toBe(updatedFormData.comment);
+    expect(updatedReview?.image).toBe('example_existing_url');
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(saveMock).toHaveBeenCalled();
+    // TODO: test computeRatings helper function.
+  });
+
+  it('should update the existing review with new image', async () => {
+    const newImageUrl = 'example_new_url'
+    const mockFile = { buffer: Buffer.from('example-image') } as Express.Multer.File; 
+    
+    const saveMock = jest.fn().mockResolvedValue(true);
+
+    jest.spyOn(ReviewFeedback, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue({
+        ...mockReview,
+        save: saveMock
+      })
+    } as any);
+
+    (uploadImage as jest.Mock).mockResolvedValue(newImageUrl);
+    
+    const updatedFormData = { rating: 5, comment: 'Updated comment w/ image' };
+
+    const updatedReview = await updateReviewFeedback(
+      mockReviewId, 
+      mockAuthUser as IUser, 
+      updatedFormData,
+      mockFile
+    );
+
+    expect(updatedReview?.rating).toBe(updatedFormData.rating);
+    expect(updatedReview?.comment).toBe(updatedFormData.comment);
+    expect(updatedReview?.image).toBe(newImageUrl);
+    expect(uploadImage).toHaveBeenCalledWith(mockAuthUser.pi_uid, mockFile, 'review-feedback');
+    expect(saveMock).toHaveBeenCalled();
+    // TODO: test computeRatings helper function.
   });
 });
