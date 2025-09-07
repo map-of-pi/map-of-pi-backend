@@ -203,15 +203,17 @@ export const updateReviewFeedback = async (
   formData: any,
   file?: Express.Multer.File
 ): Promise<IReviewFeedback | null> => {
-  const review = await ReviewFeedback.findById(reviewId);
+  const review = await ReviewFeedback.findById(reviewId).exec();
 
   if (!review) {
+    logger.error(`Review with ID ${ reviewId } not found`);
     const error = new Error(`Review with ID ${reviewId} not found`);
     error.name = "NotFoundError";
     throw error;
   }
 
   if (review.review_giver_id !== authUser.pi_uid) {
+    logger.error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
     const error = new Error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
     error.name = "ForbiddenError";
     throw error;
