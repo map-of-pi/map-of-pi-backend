@@ -11,7 +11,7 @@ import { getUserSettingsById } from "./userSettings.service";
 import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem } from "../types";
 
 import logger from "../config/loggingConfig";
-import { computeNewExpiryDate, getChangeInWeeks } from '../helpers/sellerItem';
+import { computeNewExpiryDate, getChangeInWeeks, getRemainingWeeks } from '../helpers/sellerItem';
 import { deductMappiBalance } from './membership.service';
 import { MappiDeductionError } from '../errors/MappiDeductionError';
 
@@ -401,6 +401,16 @@ export const addOrUpdateSellerItem = async (
 // Delete existing seller item
 export const deleteSellerItem = async (id: string): Promise<ISellerItem | null> => {
   try {
+    const item = await SellerItem.findById(id).exec()
+    if (!item) {
+      logger.warn(`Seller item with ID ${ id } not found for deletion.`);
+      return null;
+    }
+
+    // refund mappi equivallent to remaining weeks if not 0
+    const remweeks = getRemainingWeeks(item)
+    await deductMappiBalance(item.seller_id, -remweeks);
+    
     const deletedSellerItem = await SellerItem.findByIdAndDelete(id).exec();
     return deletedSellerItem ? deletedSellerItem as ISellerItem : null;
   } catch (error) {
