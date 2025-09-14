@@ -1,8 +1,8 @@
-import mongoose, { Schema, Types } from "mongoose";
+import mongoose, {Schema, Types} from "mongoose";
 
-import { ISeller } from "../types";
-import { SellerType } from "./enums/sellerType";
-import { FulfillmentType } from "./enums/fulfillmentType";
+import {ISeller} from "../types";
+import {SellerType} from "./enums/sellerType";
+import {FulfillmentType} from "./enums/fulfillmentType";
 
 const sellerSchema = new Schema<ISeller>(
   {
@@ -37,7 +37,7 @@ const sellerSchema = new Schema<ISeller>(
       type: Types.Decimal128,
       required: true,
       default: 5.0,
-    },    
+    },
     sell_map_center: {
       type: {
         type: String,
@@ -59,21 +59,20 @@ const sellerSchema = new Schema<ISeller>(
       type: String,
       enum: Object.values(FulfillmentType).filter(value => typeof value === 'string'),
       default: FulfillmentType.CollectionByBuyer
-    }, 
+    },
     fulfillment_description: {
       type: String,
       default: null,
       required: false
     },
-    pre_restriction_seller_type: {
-      type: String,
-      enum: Object.values(SellerType).filter(value => typeof value === 'string'),
-      required: false,
-      default: null
-    },
-    isPreRestricted: {
+    isRestricted: {
       type: Boolean,
       default: false,
+      required: false
+    },
+    lastSanctionUpdateAt: {
+      type: Date,
+      default: null,
       required: false
     }
   },
@@ -81,11 +80,11 @@ const sellerSchema = new Schema<ISeller>(
 );
 
 // Creating a text index on the 'name' and 'description' fields
-sellerSchema.index({ 'name': 'text', 'description': 'text' });
+sellerSchema.index({'name': 'text', 'description': 'text'});
 
 // Creating a 2dsphere index for the sell_map_center field
-sellerSchema.index({ 'sell_map_center.coordinates': '2dsphere' });
-sellerSchema.index({ 'sell_map_center': '2dsphere', 'updatedAt': -1 });
+sellerSchema.index({'sell_map_center.coordinates': '2dsphere'});
+sellerSchema.index({'sell_map_center': '2dsphere', 'updatedAt': -1});
 
 // Creating the Seller model from the schema
 const Seller = mongoose.model<ISeller>("Seller", sellerSchema);

@@ -1,350 +1,358 @@
+import * as turf from '@turf/turf';
 import { 
-  getSellersToEvaluate,
-  processSellersGeocoding,
-  processSanctionedSellers,
-  processUnsanctionedSellers
-} from "../../../src/cron/utils/sanctionUtils";
-import { processSellerGeocoding } from "../../../src/services/admin/report.service";
-import Seller from "../../../src/models/Seller";
-import { SellerType } from "../../../src/models/enums/sellerType";
-import { ISanctionedRegion, ISeller, SanctionedSellerStatus } from "../../../src/types";
-import { RestrictedArea } from "../../../src/models/enums/restrictedArea";
+  findAndRestrictSanctionedSellers,
+  parseToValidTurfPolygons, 
+  updateAndNotify 
+} from '../../../src/cron/utils/sanctionUtils';
+import Seller from '../../../src/models/Seller';
+import { addNotification } from '../../../src/services/notification.service';
+import { ISanctionedGeoBoundary, ISeller } from '../../../src/types';
+import logger from '../../../src/config/loggingConfig';
+import { 
+  getCachedSanctionedBoundaries, 
+  summarizeSanctionedResults 
+} from '../../../src/helpers/sanction';
 
-jest.mock("../../../src/models/Seller");
-jest.mock("../../../src/services/admin/report.service");
+jest.mock('../../../src/helpers/sanction');
+jest.mock('../../../src/models/Seller');
+jest.mock('../../../src/services/notification.service');
+jest.mock('../../../src/config/loggingConfig');
 
-describe("getSellersToEvaluate function", () => {
-  const mockedSeller = Seller as jest.Mocked<typeof Seller>;
+describe('updateAndNotify function', () => {
+  const mockSeller = {
+    _id: 'seller_ID_1',
+    seller_id: 'sellerID_1',
+    isRestricted: false
+  } as ISeller;
 
-  it("should return sellers matching geoQueries that are within sanctioned zones", async () => {
-    const mockSellers = [
-      { 
-        seller_id: "0a0a0a-0a0a-0a0a",
-        sell_map_center: {
-          type: "Point",
-          coordinates: [0, 0]
-        },
-      }
-    ];
-    
-    const mockGeoQuery = [{
-       sell_map_center: {
-         $geoWithin: {
-           $geometry: {
-             type: "Polygon", coordinates: [[[0, 0]]] 
-            }
-          }
-        }
-      }
-    ];
+  const mockedUpdateOne = Seller.updateOne as jest.Mock;
+  const mockedAddNotification = addNotification as jest.Mock;
 
-    const expectedQuery = {
-      $or: [
-        ...mockGeoQuery,
-        { seller_type: SellerType.Restricted }
-      ]
-    };
+  it('should skip update and notify if restriction status is unchanged', async () => {
+    const result = await updateAndNotify(mockSeller, false);
 
-    const execMock = jest.fn().mockResolvedValue(mockSellers);
-    mockedSeller.find.mockReturnValueOnce({ exec: execMock } as any);
-
-    const result = await getSellersToEvaluate(mockGeoQuery as any);
-
-    expect(Seller.find).toHaveBeenCalledWith(expectedQuery);
-    expect(execMock).toHaveBeenCalled();
-    expect(result).toEqual(mockSellers);
+    expect(mockedUpdateOne).not.toHaveBeenCalled();
+    expect(mockedAddNotification).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      seller_id: 'sellerID_1',
+      isChanged: false,
+      isRestricted: false,
+      isUpdateSuccess: false,
+      isNotificationSuccess: false
+    });
   });
 
-  it("should return sellers already marked as Restricted", async () => {
-    const mockSellers = [
-      { 
-        seller_id: "0b0b0b-0b0b-0b0b",
-        seller_type: SellerType.Restricted
-      }
-    ];
+  it('should update and notify accordingly if restriction status changed', async () => {
+    mockedUpdateOne.mockResolvedValueOnce({ acknowledged: true });
+    mockedAddNotification.mockResolvedValueOnce(true);
 
-    const mockGeoQuery: any[] = [];
-    const expectedQuery = {
-      $or: [
-        ...mockGeoQuery,
-        { seller_type: SellerType.Restricted }
-      ]
-    };
+    const result = await updateAndNotify(mockSeller, true);
 
-    const execMock = jest.fn().mockResolvedValue(mockSellers);
-    mockedSeller.find.mockReturnValueOnce({ exec: execMock } as any);
+    expect(mockedUpdateOne).toHaveBeenCalledWith(
+      { _id: 'seller_ID_1' },
+      expect.objectContaining({
+        isRestricted: true,
+        sanction_last_checked: expect.any(Date)
+      })
+    );
 
-    const result = await getSellersToEvaluate(mockGeoQuery);
+    expect(mockedAddNotification).toHaveBeenCalledWith(
+      'sellerID_1',
+      expect.stringContaining(
+        'Your Sell Center is in a Pi Network sanctioned area, so your map marker will no longer appear in searches.'
+      )
+    );
 
-    expect(Seller.find).toHaveBeenCalledWith(expectedQuery);
-    expect(execMock).toHaveBeenCalled();
-    expect(result).toEqual(mockSellers);
+    expect(result).toEqual({
+      seller_id: 'sellerID_1',
+      isChanged: true,
+      isRestricted: true,
+      isUpdateSuccess: true,
+      isNotificationSuccess: true
+    });
   });
 
-  it("should return an empty array if no sellers match", async () => {
-    const mockGeoQuery: any[] = [];
-    const expectedQuery = {
-      $or: [
-        ...mockGeoQuery,
-        { seller_type: SellerType.Restricted }
-      ]
-    };
-    
-    mockedSeller.find.mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) } as any);
-  
-    const result = await getSellersToEvaluate([]);
+  it('should update successfully but fail to notify', async () => {
+    mockedUpdateOne.mockResolvedValueOnce({ acknowledged: true });
+    mockedAddNotification.mockRejectedValueOnce(new Error('Unexpected Exception'));
 
-    expect(Seller.find).toHaveBeenCalledWith(expectedQuery);
-    expect(result).toEqual([]);
+    const result = await updateAndNotify(mockSeller, true);
+
+    expect(mockedUpdateOne).toHaveBeenCalled();
+    expect(mockedAddNotification).toHaveBeenCalled();
+
+    expect(result).toEqual({
+      seller_id: 'sellerID_1',
+      isChanged: true,
+      isRestricted: true,
+      isUpdateSuccess: true,
+      isNotificationSuccess: false
+    });
+  });
+
+  it('should fail to update and skip notification', async () => {
+    mockedUpdateOne.mockRejectedValueOnce(new Error('Unexpected Exception'));
+
+    const result = await updateAndNotify(mockSeller, true);
+
+    expect(mockedUpdateOne).toHaveBeenCalled();
+    expect(mockedAddNotification).not.toHaveBeenCalled();
+
+    expect(result).toEqual({
+      seller_id: 'sellerID_1',
+      isChanged: true,
+      isRestricted: true,
+      isUpdateSuccess: false,
+      isNotificationSuccess: false
+    });
   });
 });
 
-describe("processSellersGeocoding function", () => {
-  const mockedProcessSellerGeocoding = processSellerGeocoding as jest.MockedFunction<typeof processSellerGeocoding>;
+describe('parseToValidTurfPolygons function', () => {
+  it('should parse a valid Polygon and return a turf polygon', () => {
+    const mockSanctionedBoundaries: ISanctionedGeoBoundary[] = [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0, 0],
+              [0, 1],
+              [1, 1],
+              [0, 0], // already closed
+            ],
+          ],
+        },
+        properties: {
+          shapeName: 'TestShape',
+          shapeISO: 'TS',
+          shapeID: '1',
+          shapeGroup: 'Group1',
+          shapeType: 'Country',
+        },
+        _id: 'BoundariesTest1',
+      } as any,
+    ];
 
-  const sanctionedRegions: ISanctionedRegion[] = [
-    { 
-      location: RestrictedArea.CUBA,
-      boundary: {
-        type: "Polygon",
-        coordinates: [[
-          [-85.3, 19.4],
-          [-73.8, 19.4],
-          [-73.8, 23.7],
-          [-85.3, 23.7],
-          [-85.3, 19.4],
-        ]]
-      } 
-    },
-    {
-      location: RestrictedArea.IRAN,
-      boundary: {
-        type: "Polygon",
-        coordinates: [[
-          [43.0, 24.0],
-          [63.5, 24.0],
-          [63.5, 40.5],
-          [43.0, 40.5],
-          [43.0, 24.0],
-        ]]
-      }
-    }
-  ] as unknown as ISanctionedRegion[];
-  
-  it("should flag sellers if their location matches a sanctioned region", async () => {
-    const sellers: ISeller[] = [
+    const result = parseToValidTurfPolygons(mockSanctionedBoundaries);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('Feature');
+    expect(result[0].geometry.type).toBe('Polygon');
+    expect(result[0].geometry.coordinates[0]).toEqual([
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [0, 0],
+    ]);
+  });
+
+  it('should parse a valid MultiPolygon and return multiple turf polygons', () => {
+    const mockSanctionedBoundaries: ISanctionedGeoBoundary[] = [
       {
-        seller_id: "0f0f0f-0f0f-0f0f",
-        name: "Test Seller Sanctioned 6",
-        address: "Sanctioned Region Cuba",
-        seller_type: SellerType.Active,
-        pre_restriction_seller_type: null,
-        sell_map_center: { type: "Point", coordinates: [-84.3829, 22.132] }
-      },
-      {
-        seller_id: "0g0g0g-0g0g-0g0g",
-        name: "Test Seller Sanctioned 7",
-        address: "Sanctioned Region Iran",
-        seller_type: SellerType.Test,
-        pre_restriction_seller_type: null,
-        sell_map_center: { type: "Point", coordinates: [46.7324, 37.4585] }
-      }
-    ] as unknown as ISeller[];
-  
-    mockedProcessSellerGeocoding.mockImplementation(async (seller, region) => {
-      if (
-        (seller.seller_id === "0f0f0f-0f0f-0f0f" && region === RestrictedArea.CUBA) ||
-        (seller.seller_id === "0g0g0g-0g0g-0g0g" && region === RestrictedArea.IRAN)
-      ) {
-        return {
-          seller_id: seller.seller_id,
-          name: seller.name,
-          address: seller.address,
-          sell_map_center: seller.sell_map_center,
-          sanctioned_location: region,
-          pre_restriction_seller_type: seller.pre_restriction_seller_type
-        };
-      }
-      return null;
+        type: 'Feature',
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: [
+            [
+              [
+                [0, 0],
+                [1, 0],
+                [1, 1],
+                [0, 0],
+              ],
+            ],
+            [
+              [
+                [10, 10],
+                [11, 10],
+                [11, 11],
+                [10, 10],
+              ],
+            ],
+          ],
+        },
+        properties: {
+          shapeName: 'TestMultiShape',
+          shapeISO: 'TM',
+          shapeID: '2',
+          shapeGroup: 'Group2',
+          shapeType: 'Region',
+        },
+        _id: 'BoundariesTest2',
+      } as any,
+    ];
+
+    const result = parseToValidTurfPolygons(mockSanctionedBoundaries);
+
+    expect(result).toHaveLength(2);
+
+    result.forEach(polygon => {
+      expect(polygon.type).toBe('Feature');
+      expect(polygon.geometry.type).toBe('Polygon');
     });
 
-    const result = await processSellersGeocoding(sellers, sanctionedRegions);
-
-    expect(mockedProcessSellerGeocoding).toHaveBeenCalled();
-    expect(result).toEqual([
-      {
-        seller_id: "0f0f0f-0f0f-0f0f",
-        pre_restriction_seller_type: null,
-        isSanctionedRegion: true
-      },
-      {
-        seller_id: "0g0g0g-0g0g-0g0g",
-        pre_restriction_seller_type: null,
-        isSanctionedRegion: true
-      }
-    ]);
+    expect(result[0].geometry.coordinates[0][0]).toEqual([0, 0]);
+    expect(result[1].geometry.coordinates[0][0]).toEqual([10, 10]);
   });
 
-  it("should not flag sellers if their location does not match a sanctioned region", async () => {
-    const sellers: ISeller[] = [
+  it('should skip polygon with too few coordinates', () => {
+    const mockSanctionedBoundaries: ISanctionedGeoBoundary[] = [
       {
-        seller_id: "0a0a0a-0a0a-0a0a",
-        name: "Test Seller 1",
-        address: "Not Sanctioned Region",
-        seller_type: SellerType.Restricted,
-        pre_restriction_seller_type: SellerType.Active,
-        sell_map_center: { type: "Point", coordinates: [-74.0060, 40.7128] }
-      },
-      {
-        seller_id: "0b0b0b-0b0b-0b0b",
-        name: "Test Vendor 2",
-        address: "Not Sanctioned Region",
-        seller_type: SellerType.Active,
-        pre_restriction_seller_type: null,
-        sell_map_center: { type: "Point", coordinates: [-118.2437, 34.0522] }
-      }
-    ] as unknown as ISeller[];
-  
-    mockedProcessSellerGeocoding.mockResolvedValue(null);
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0, 0],
+              [1, 0],
+              [0, 0], // too few points to form valid ring
+            ],
+          ],
+        },
+        properties: {
+          shapeName: 'IncompleteShape',
+          shapeISO: 'IS',
+          shapeID: '3',
+          shapeGroup: 'Group3',
+          shapeType: 'Incomplete',
+        },
+        _id: 'BoundariesTest3',
+      } as any,
+    ];
 
-    const result = await processSellersGeocoding(sellers, sanctionedRegions);
+    const result = parseToValidTurfPolygons(mockSanctionedBoundaries);
 
-    expect(mockedProcessSellerGeocoding).toHaveBeenCalledTimes(sellers.length * sanctionedRegions.length);
-    expect(result).toEqual([
-      {
-        seller_id: "0a0a0a-0a0a-0a0a",
-        pre_restriction_seller_type: SellerType.Active,
-        isSanctionedRegion: false
-      },
-      {
-        seller_id: "0b0b0b-0b0b-0b0b",
-        pre_restriction_seller_type: null,
-        isSanctionedRegion: false
-      }
-    ]);
+    expect(result).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledWith('Skipping Polygon: too few coordinates');
   });
 
-  it("should return an empty array if no sellers are provided", async () => {
-    const result = await processSellersGeocoding([], sanctionedRegions);
-    expect(result).toEqual([]);
-    expect(mockedProcessSellerGeocoding).not.toHaveBeenCalled();
+  it('should skip unknown geometry types', () => {
+    const mockSanctionedBoundaries: any[] = [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [0, 0],
+            [1, 1],
+          ],
+        },
+        properties: {},
+        _id: 'BoundariesTest4',
+      },
+    ];
+
+    const result = parseToValidTurfPolygons(mockSanctionedBoundaries);
+
+    expect(result).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledWith('Skipping Polygon/ MultiPolygon: unknown geometry type:', 'LineString');
+  });
+
+  it('should catch and log an error when polygon parsing fails', () => {
+    const mockSanctionedBoundaries: any[] = [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: null, // malformed, should cause error in processPolygon
+        },
+        properties: {},
+        _id: 'BoundariesTest5',
+      },
+    ];
+
+    const result = parseToValidTurfPolygons(mockSanctionedBoundaries);
+
+    expect(result).toHaveLength(0);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to parse polygon:'), 'BoundariesTest5'
+    );
   });
 });
 
-describe("processSanctionedSellers function", () => {
-  let mockedBulkWrite: jest.Mock;
+describe('findAndRestrictSanctionedSellers function', () => {
+  it('should process sellers and log the Sanctioned stats accordingly', async () => {
+    const mockSellers = [
+      { _id: 'seller_id1', seller_id: 'sellerId1', sell_map_center: { coordinates: [0.5, 0.5] }, isRestricted: false },
+      { _id: 'seller_id2', seller_id: 'sellerId2', sell_map_center: { coordinates: [2, 2] }, isRestricted: true },
+    ];
 
-  beforeEach(() => {
-    jest.clearAllMocks();
+    // ensure valid polygon geometry
+    (getCachedSanctionedBoundaries as jest.Mock).mockResolvedValue([
+      { geometry: turf.polygon([[[0,0],[0,1],[1,1],[0,0]]]).geometry }
+    ]);
 
-    mockedBulkWrite = jest.fn().mockResolvedValue({});
-    (Seller.bulkWrite as jest.Mock) = mockedBulkWrite;
+    (Seller.find as jest.Mock).mockReturnValue({ lean: () => mockSellers });
+    (Seller.updateOne as jest.Mock).mockResolvedValue({ acknowledged: true });
+
+    (addNotification as jest.Mock).mockResolvedValue(true);
+
+    (summarizeSanctionedResults as jest.Mock).mockReturnValue({
+      changed: 2,
+      restricted: 1,
+      unrestricted: 1
+    });
+
+    await findAndRestrictSanctionedSellers();
+
+    expect(Seller.find).toHaveBeenCalledWith({
+      $or: [
+        {
+          sell_map_center: {
+            $geoWithin: {
+              $box: [
+                [0, 0],
+                [1, 1]
+              ]
+            }
+          }
+        },
+        {
+          isRestricted: true
+        }
+      ]
+    });
+
+    expect(Seller.updateOne).toHaveBeenCalledTimes(2);
+    expect(addNotification).toHaveBeenCalledTimes(2);
+    expect(summarizeSanctionedResults).toHaveBeenCalledWith(expect.any(Array));
+    expect(logger.info).toHaveBeenCalledWith(
+      'Sanction Bot Statistics',
+      expect.objectContaining({
+        category: 'stats',
+        total_sellers_processed: 2,
+        changed: 2,
+        restricted: 1,
+        unrestricted: 1,
+        run_timestamp: expect.any(String) // since it's a timestamp string
+      })
+    );
   });
 
-  it("Sets seller_type to Restricted and preserves pre_restriction_seller_type for sanctioned sellers", async () => {
-    const sanctionedSellers: SanctionedSellerStatus[] = [
+  it('should abort if no polygons are returned', async () => {
+    // ensure invalid polygon geometry
+    (getCachedSanctionedBoundaries as jest.Mock).mockResolvedValue([
       {
-        seller_id: "0f0f0f-0f0f-0f0f",
-        pre_restriction_seller_type: SellerType.Active,
-        isSanctionedRegion: true
-      },
-      {
-        seller_id: "0g0g0g-0g0g-0g0g",
-        pre_restriction_seller_type: SellerType.Test,
-        isSanctionedRegion: true
-      }
-    ] as unknown as SanctionedSellerStatus[];
-
-    await processSanctionedSellers(sanctionedSellers);
-
-    expect(mockedBulkWrite).toHaveBeenCalledWith([
-      {
-        updateOne: {
-          filter: { seller_id: "0f0f0f-0f0f-0f0f" },
-          update: {
-            $set: {
-              seller_type: SellerType.Restricted,
-              pre_restriction_seller_type: SellerType.Active
-            }
-          }
-        }
-      },
-      {
-        updateOne: {
-          filter: { seller_id: "0g0g0g-0g0g-0g0g" },
-          update: {
-            $set: {
-              seller_type: SellerType.Restricted,
-              pre_restriction_seller_type: SellerType.Test
-            }
-          }
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0, 0],
+              [1, 0],
+              [0, 0] // only 3 points, not enough for valid ring
+            ]
+          ]
         }
       }
     ]);
-  });
+    
+    await findAndRestrictSanctionedSellers();
 
-  it("Does not call bulkWrite when there are no sanctioned sellers", async () => {
-    await processSanctionedSellers([]);
-
-    expect(Seller.bulkWrite).not.toHaveBeenCalled();
-  });
-});
-
-describe("processUnsanctionedSellers function", () => {
-  let mockedBulkWrite: jest.Mock;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-
-    mockedBulkWrite = jest.fn().mockResolvedValue({});
-    (Seller.bulkWrite as jest.Mock) = mockedBulkWrite;
-  });
-
-  it("Restores seller_type and defaults pre_restriction_seller_type field for unsanctioned sellers", async () => {
-    const unsanctionedSellers: SanctionedSellerStatus[] = [
-      {
-        seller_id: "0a0a0a-0a0a-0a0a",
-        pre_restriction_seller_type: SellerType.Active,
-        isSanctionedRegion: false
-      },
-      {
-        seller_id: "0b0b0b-0b0b-0b0b",
-        pre_restriction_seller_type: SellerType.Test,
-        isSanctionedRegion: false
-      }
-    ] as unknown as SanctionedSellerStatus[];
-
-    await processUnsanctionedSellers(unsanctionedSellers);
-
-    expect(mockedBulkWrite).toHaveBeenCalledWith([
-      {
-        updateOne: {
-          filter: { seller_id: "0a0a0a-0a0a-0a0a" },
-          update: {
-            $set: {
-              seller_type: SellerType.Active,
-              pre_restriction_seller_type: null
-            }
-          }
-        }
-      },
-      {
-        updateOne: {
-          filter: { seller_id: "0b0b0b-0b0b-0b0b" },
-          update: {
-            $set: {
-              seller_type: SellerType.Test,
-              pre_restriction_seller_type: null
-            }
-          }
-        }
-      }
-    ]);
-  });
-
-  it("Does not call bulkWrite when there are no unsanctioned sellers", async () => {
-    await processUnsanctionedSellers([]);
-
-    expect(Seller.bulkWrite).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith('No valid polygons found; aborting SanctionBot process.');
+    expect(Seller.find).not.toHaveBeenCalled();
+    expect(Seller.updateOne).not.toHaveBeenCalled();
+    expect(addNotification).not.toHaveBeenCalled();
   });
 });

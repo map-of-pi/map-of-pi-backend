@@ -3,7 +3,7 @@ import * as restrictionService from "../../services/admin/restriction.service";
 
 import logger from "../../config/loggingConfig";
 
-export const  checkSanctionStatus = async (req: Request, res: Response) => {
+export const checkSanctionStatus = async (req: Request, res: Response) => {
 	const { latitude, longitude } = req.body;
 
 	if (typeof latitude !== 'number' || typeof longitude !== 'number') {
@@ -12,8 +12,8 @@ export const  checkSanctionStatus = async (req: Request, res: Response) => {
 	}
 
 	try {
-		const result = await restrictionService.validateSellerLocation(longitude, latitude);
-		const isSanctioned = !!result;
+		const sanctionedRegion = await restrictionService.validateSellerLocation(longitude, latitude);
+		const isSanctioned = !!sanctionedRegion;
 
     const status = isSanctioned ? 'in a sanctioned zone' : 'not in a sanctioned zone';
     logger.info(`User at [${latitude}, ${longitude}] is ${status}.`);
