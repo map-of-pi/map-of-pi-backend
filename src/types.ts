@@ -16,6 +16,7 @@ import { WatchAdsSessionStatus } from "./models/enums/watchAds";
 // USER MODELS
 // ========================
 export interface IUser extends Document {
+  _id: Types.ObjectId;
   pi_uid: string;
   pi_username: string;
   user_name: string;
