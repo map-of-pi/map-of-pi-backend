@@ -46,7 +46,7 @@ export interface IUserSettings extends Document {
 };
 
 // Select specific fields from IUserSettings
-export type PartialUserSettings = Pick<IUserSettings, 'user_name' | 'email' | 'phone_number' | 'findme' | 'trust_meter_rating'>;
+export type PartialUserSettings = Pick<IUserSettings, 'user_name' | 'trust_meter_rating'>;
 
 // ========================
 // MEMBERSHIP MODELS
@@ -66,6 +66,9 @@ export interface MembershipOption {
   duration: number | null; // in weeks
   mappi_allowance: number;
 }
+
+
+export type PartialUserMembership = Pick<IMembership, 'membership_class'>;
 
 // ========================
 // MAP / GEOLOCATION TYPES
@@ -97,9 +100,10 @@ export interface ISeller extends Document {
   lastSanctionUpdateAt: Date;
 };
 
+export type PartialSeller = Pick<ISeller, 'seller_id' | 'name' | 'image' | 'seller_type' | 'sell_map_center' | 'isRestricted' | 'lastSanctionUpdateAt'>;
+
 // Combined interface representing a seller with selected user settings
-export interface ISellerWithSettings extends ISeller, PartialUserSettings {
-};
+export interface ISellerWithSettings extends PartialSeller, PartialUserSettings, PartialUserMembership {};
 
 export interface ISellerItem extends Document {
   _id: string;
