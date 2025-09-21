@@ -299,6 +299,16 @@ export interface INotification extends Document {
   updatedAt: Date;
 };
 
+export interface INotificationEvent extends Document {
+  _id: string;
+  notification_id: string;
+  status: string;
+  retry_count: number;
+  reason: string;
+  error_message: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 // ========================
 // SANCTIONS / GEO-RESTRICTIONS
 // ========================
