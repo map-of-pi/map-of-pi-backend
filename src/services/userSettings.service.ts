@@ -58,6 +58,11 @@ export const addOrUpdateUserSettings = async (
       updateData.findme = formData.findme;
     }
 
+     
+    if (formData.wallet_address) {
+      updateData.wallet_address = formData.wallet_address;
+    }
+
     if (formData.search_filters) {
       updateData.search_filters = JSON.parse(formData.search_filters);
     }
