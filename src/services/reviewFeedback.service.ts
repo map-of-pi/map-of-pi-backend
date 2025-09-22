@@ -223,6 +223,9 @@ export const updateReviewFeedback = async (
   if (formData.rating !== undefined) review.rating = formData.rating;
   if (formData.comment !== undefined) review.comment = formData.comment;
 
+  // Always update the date when review is updated
+  review.review_date = new Date();
+
   // Handle image (keep existing unless a new file is uploaded)
   if (file) {
     review.image = await uploadImage(authUser.pi_uid, file, "review-feedback");
