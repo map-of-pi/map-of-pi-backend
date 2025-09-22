@@ -68,6 +68,11 @@ const userSettingsSchema = new Schema<IUserSettings>(
       required: true,
       default: {},
     },
+    wallet_address: {  
+        type: String,  
+        required: false,  
+        default: null,  
+},
   }
 );
 
