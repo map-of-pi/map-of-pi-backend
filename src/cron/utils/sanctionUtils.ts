@@ -6,10 +6,11 @@ import {
 } from '../../helpers/sanction';
 import Seller from '../../models/Seller';
 import SanctionedGeoBoundary from '../../models/misc/SanctionedGeoBoundary';
-import { addNotification } from '../../services/notification.service';
 import { ISeller, SanctionedUpdateResult } from '../../types';
 import logger from '../../config/loggingConfig';
+import {EventPublisher} from "../../events/publishers/EventPublisher";
 
+const publisher = new EventPublisher();
 /* Fetch raw sanctioned boundaries */
 const getSanctionedGeoBoundaries = async () => {
   return SanctionedGeoBoundary.find({}, { geometry: 1 }).lean();
@@ -55,12 +56,13 @@ export const updateAndNotify = async (
 
   if (isUpdateSuccess) {
     try {
-      await addNotification(
-        seller.seller_id,
-        isNowRestricted
-          ? 'Your Sell Center is in a Pi Network sanctioned area, so your map marker will no longer appear in searches.'
-          : 'Your Sell Center is no longer in a Pi Network sanctioned area, so your map marker will now be visible in searches.',
-      );
+      await publisher.publish({
+        type: 'sanction.event',
+        payload: {
+          seller_id: seller.seller_id,
+          isRestricted: isNowRestricted
+        }
+      });
       isNotificationSuccess = true;
     } catch (error) {
       logger.error(`Failed to notify seller ${seller.seller_id}: ${error}`);

@@ -1,12 +1,16 @@
 import {IEventHandler} from "./IEventHandler";
 import logger from "../../config/loggingConfig";
+import {IEvent} from "../NotificationEvent";
+import {SanctionEventHandler} from "./EventHandlers";
 
 export class EventHandlerManager {
   private static instance: EventHandlerManager;
   private handlers = new Set<IEventHandler>();
 
   // Private constructor ensures no external instantiation
-  private constructor() {}
+  private constructor() {
+    this.handlers.add(new SanctionEventHandler())
+  }
 
   // Singleton accessor
   public static getInstance(): EventHandlerManager {
@@ -18,6 +22,7 @@ export class EventHandlerManager {
 
   public async handleEvent(event: IEvent){
     for (const handler of this.getHandlers(event)) {
+      logger.info(`Handling event ${event.type}`);
       try {
         await handler.handle(event)
       } catch (e) {
