@@ -42,3 +42,27 @@
       return res.status(500).json({ error: "Internal server error" });
     }
   };
+
+
+  // POST /api/v1/watch-ads/session/:id/segment-complete
+  export const completeSegment = async (req: Request, res: Response) => {
+    const authUser = req.currentUser as IUser;
+    if (!authUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+      const { id } = req.params;
+      const { adId } = req.body;
+
+      const updated = await WatchAdsSessionService.completeSegment(authUser._id, id, adId);
+      if (!updated) {
+        return res.status(404).json({ error: "Session not found or expired" });
+      }
+
+      return res.json(updated);
+    } catch (err: any) {
+      logger.error("Error completing watch-ads segment", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  };
