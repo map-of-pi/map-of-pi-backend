@@ -55,33 +55,54 @@ const buildTrustLevelFilters = (searchFilters: any): TrustMeterScale[] => {
 };
 
 const buildSearchQuery = async (
-  baseCriteria: Record<string, any>, search_query?: string
+  baseCriteria: Record<string, any>, search_query?: string | string[]
 ): Promise<Record<string, any>> => {
-  if (!search_query) return baseCriteria;
+  if (!search_query || search_query.length === 0) return baseCriteria;
+
+  const searchTerms = Array.isArray(search_query)
+    ? search_query.filter(term => term)
+    : search_query.split(' ').filter(term => term);
+
+  if (searchTerms.length === 0) return baseCriteria;
+
+  const regexQueries = searchTerms.map(term => ({ $regex: term, $options: 'i' }));
+
+  // Fields to search in Seller, User, and UserSettings
+  const fieldsToSearch = [
+    // Seller fields
+    { 'name': { $all: regexQueries } },
+    { 'description': { $all: regexQueries } },
+    { 'address': { $all: regexQueries } },
+    // User fields (via lookup)
+    { 'user.pi_username': { $all: regexQueries } },
+    // UserSettings fields (via lookup)
+    { 'userSettings.user_name': { $all: regexQueries } },
+    { 'userSettings.email': { $all: regexQueries } },
+  ];
 
   // Match sellers via items
   const sellerIdsFromItems = await SellerItem.find({
     stock_level: { $ne: StockLevelType.SOLD },
     expired_by: { $gt: new Date() },
-    $text: { $search: search_query },
-  }).distinct("seller_id");
+    $or: [
+      { name: { $all: regexQueries } },
+      { description: { $all: regexQueries } },
+    ]
+  }).distinct('seller_id');
 
-  // If any sellers matched via items, combine using $or
-  if (sellerIdsFromItems.length > 0) {
-    return { 
-      ...baseCriteria,
-      $or: [
-        { $text: { $search: search_query, $caseSensitive: false } },
-        { seller_id: { $in: sellerIdsFromItems } }
-      ]
-    };
-  }
-
-  // If no sellers matched via items, just search text at top level
-  return {
-    ...baseCriteria,
-    $text: { $search: search_query, $caseSensitive: false }
+  const searchQuery = {
+    $and: [
+      baseCriteria,
+      {
+        $or: [
+          ...fieldsToSearch,
+          { seller_id: { $in: sellerIdsFromItems } },
+        ],
+      },
+    ],
   };
+
+  return searchQuery;
 };
 
 const addGeoFilter = (
@@ -166,7 +187,7 @@ const resolveSellerSettings = async (
 // Fetch all sellers or within a specific bounding box; optional search query.
 export const getAllSellers = async (
   bounds?: { sw_lat: number, sw_lng: number, ne_lat: number, ne_lng: number },
-  search_query?: string,
+  search_query?: string | string[],
   userId?: string,
 ): Promise<ISellerWithSettings[]> => {
   try {
@@ -187,10 +208,29 @@ export const getAllSellers = async (
     const sellerQuery = await buildSearchQuery(baseCriteria, search_query);
     
     // Execute query
-    const finalSellerDocs = await Seller.find(sellerQuery)
-      .sort({ updatedAt: -1 })
-      .limit(maxNumSellers)
-      .exec();
+    const finalSellerDocs = await Seller.aggregate([
+      { $match: sellerQuery },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'seller_id',
+          foreignField: 'pi_uid',
+          as: 'user',
+        },
+      },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'usersettings',
+          localField: 'seller_id',
+          foreignField: 'user_settings_id',
+          as: 'userSettings',
+        },
+      },
+      { $unwind: { path: '$userSettings', preserveNullAndEmptyArrays: true } },
+      { $sort: { updatedAt: -1 } },
+      { $limit: maxNumSellers },
+    ]);
 
     // Post-filter + merge settings
     return await resolveSellerSettings(finalSellerDocs, trustLevelFilters);
