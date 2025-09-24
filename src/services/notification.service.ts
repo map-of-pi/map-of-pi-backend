@@ -12,34 +12,6 @@ export const addNotification = async (pi_uid: string, reason: string): Promise<I
   }
 };
 
-export const getNotifications = async (
-  pi_uid: string, 
-  skip: number, 
-  limit: number,
-  status?: 'cleared' | 'uncleared'
-): Promise<INotification[]> => {
-  try {
-    const filter: any = { pi_uid };
-
-    if (status === 'cleared') {
-      filter.is_cleared = true;
-    } else if (status === 'uncleared') {
-      filter.is_cleared = false;
-    }
-
-    const notifications = await Notification.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec();
-
-    return notifications as INotification[];
-  } catch (error: any) {
-    logger.error(`Failed to get notifications for piUID ${ pi_uid }: ${error.message}`);
-    throw error;
-  }
-};
-
 export const toggleNotificationStatus = async (notification_id: string): Promise<INotification | null> => {
   try {
     const notification = await Notification.findById(notification_id).exec();
@@ -61,23 +33,25 @@ export const toggleNotificationStatus = async (notification_id: string): Promise
   }
 };
 
-export const countNotifications = async ({
-  pi_uid,
-  status,
-}: {
-  pi_uid: string;
-  status?: 'cleared' | 'uncleared';
-}): Promise<number> => {
+export async function getNotificationsAndCount(
+  pi_uid: string,
+  skip: number,
+  limit: number,
+  status?: 'cleared' | 'uncleared'
+): Promise<{ items: INotification[]; count: number }> {
   try {
-    const query: any = { pi_uid };
+    const filter: any = { pi_uid };
+    if (status === 'cleared') filter.is_cleared = true;
+    if (status === 'uncleared') filter.is_cleared = false;
 
-    if (status === 'cleared') query.is_cleared = true;
-    if (status === 'uncleared') query.is_cleared = false;
+    const [items, count] = await Promise.all([
+      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      Notification.countDocuments(filter).exec()
+    ]);
 
-    const count = await Notification.countDocuments(query);
-    return count;
+    return { items, count };
   } catch (error: any) {
-    logger.error(`Failed to count notifications for piUID ${pi_uid}: ${error.message}`);
+    logger.error(`Failed to get notifications+count for piUID ${pi_uid}: ${error.message}`);
     throw error;
   }
-};
+}
