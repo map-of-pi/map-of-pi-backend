@@ -24,18 +24,12 @@ const notificationRoutes = Router();
 
 /**
  * @swagger
- * /api/v1/notifications/{pi_uid}:
+ * /api/v1/notifications:
  *   get:
  *     tags: 
  *      - Notification
- *     summary: Get notifications associated with the user
+ *     summary: Get notifications associated with the user *
  *     parameters:
- *       - name: pi_uid
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *         description: The Pi UID of the notifications to retrieve
  *       - name: skip
  *         in: query
  *         required: false
@@ -68,8 +62,13 @@ const notificationRoutes = Router();
  *                items:
  *                  type: array
  *                  items:
- *                 $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
- *       500:
+ *                    $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
+ *                count:
+ *                  type: integer
+ *                  description: Total number of matching notifications
+ *       401:	
+ *         description: Unauthorized	
+ *       500:	
  *         description: Internal server error
  */
 notificationRoutes.get("/", verifyToken, notificationController.getNotifications);
