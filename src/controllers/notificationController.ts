@@ -4,48 +4,26 @@ import logger from "../config/loggingConfig";
 
 export const getNotifications = async (req: Request, res: Response) => {
   const authUser = req.currentUser;
-
-  if (!authUser) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
 
   const skip = req.query.skip ? Number(req.query.skip) : 0;
   const limit = req.query.limit ? Number(req.query.limit) : 20;
-
   const status = ['cleared', 'uncleared'].includes(req.query.status as string)
-    ? (req.query.status as 'cleared' | 'uncleared') : undefined;
+    ? (req.query.status as 'cleared' | 'uncleared')
+    : undefined;
 
   try {
-    const notifications = await notificationService.getNotifications(authUser.pi_uid, skip, limit, status);
-    return res.status(200).json(notifications);
+    const { items, count } = await notificationService.getNotificationsAndCount(
+      authUser.pi_uid, skip, limit, status
+    );
+    // Unified payload: FE can use `count` for the badge, `items` for the list.
+    return res.status(200).json({ items, count });
   } catch (error) {
     logger.error('Failed to get notifications', error);
     return res.status(500).json({ message: 'An error occurred while getting notifications; please try again later' });
   }
 };
 
-export const getNotificationsCount = async (req: Request, res: Response) => {
-  try {
-    const authUser = req.currentUser;
-
-    if (!authUser) {
-        logger.warn('No authenticated user found when trying to get notification count.');
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const status = req.query.status as 'cleared'| 'uncleared' | undefined;
-
-      const count = await notificationService.countNotifications({
-        pi_uid: authUser.pi_uid,
-        status,
-      });
-
-      return res.status(200).json({ count });
-    } catch (error) {
-      logger.error('Failed to count notifications', error);
-      return res.status(500).json({ message: 'An error occurred while counting notifications; please try again later' });
-    }
-};
 
 export const createNotification = async (req: Request, res: Response) => {
   const authUser = req.currentUser;
