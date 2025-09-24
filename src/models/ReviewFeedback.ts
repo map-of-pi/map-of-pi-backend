@@ -37,6 +37,7 @@ const reviewFeedbackSchema = new Schema<IReviewFeedback>(
       required: true
     }
   },
+  { timestamps: true } // Adds timestamps to track creation and update times
 );
 
 const ReviewFeedback = mongoose.model<IReviewFeedback>("Review-Feedback", reviewFeedbackSchema);
