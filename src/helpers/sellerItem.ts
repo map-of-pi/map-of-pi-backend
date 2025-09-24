@@ -2,8 +2,7 @@ import logger from "../config/loggingConfig";
 import { ISellerItem } from "../types";
 
 export const isExpiredItem = (item: ISellerItem): boolean => {
-  if (!item || !item.expired_by) return true;
-  return new Date() > new Date(item.expired_by);
+  return !item?.expired_by || new Date() > new Date(item.expired_by);
 };
 
 export const getRemainingWeeks = (existing_item: ISellerItem): number => {
@@ -66,7 +65,6 @@ export const computeNewExpiryDate = (existingItem: ISellerItem, itemData: ISelle
   if (changeInWeeks < 0) {
     return new Date(expiry.getTime() + changeInWeeks * msPerWeek);
   }
-
-  // No change;
-    return expiry;
+  
+  return expiry;
 };
