@@ -2,28 +2,51 @@ import { Request, Response } from "express";
 import * as notificationService from '../services/notification.service';
 import logger from "../config/loggingConfig";
 
+type Status = 'cleared' | 'uncleared';
+const allowedStatuses: Status[] = ['cleared', 'uncleared'];
+
 export const getNotifications = async (req: Request, res: Response) => {
   const authUser = req.currentUser;
-  if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
+  if (!authUser) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
-  const skip = req.query.skip ? Number(req.query.skip) : 0;
-  const limit = req.query.limit ? Number(req.query.limit) : 20;
-  const status = ['cleared', 'uncleared'].includes(req.query.status as string)
-    ? (req.query.status as 'cleared' | 'uncleared')
+  // Parse skip & limit safely
+  const skipRaw = Number(req.query.skip);
+  const limitRaw = Number(req.query.limit);
+
+  if ((req.query.skip && !Number.isFinite(skipRaw)) ||
+      (req.query.limit && !Number.isFinite(limitRaw))) {
+    return res.status(400).json({ error: 'Invalid pagination values' });
+  }
+
+  const skip = Math.max(0, Math.floor(skipRaw || 0));
+  const limit = Math.min(100, Math.max(1, Math.floor(limitRaw || 20))); // enforce 1–100
+
+  // Validate status filter
+  const s = req.query.status;
+  const status: Status | undefined = allowedStatuses.includes(s as Status)
+    ? (s as Status)
     : undefined;
 
   try {
     const { items, count } = await notificationService.getNotificationsAndCount(
-      authUser.pi_uid, skip, limit, status
+      authUser.pi_uid,
+      skip,
+      limit,
+      status
     );
-    // Unified payload: FE can use `count` for the badge, `items` for the list.
     return res.status(200).json({ items, count });
   } catch (error) {
-    logger.error('Failed to get notifications', error);
-    return res.status(500).json({ message: 'An error occurred while getting notifications; please try again later' });
+    logger.error(
+      `Failed to get notifications for user=${authUser.pi_uid}`,
+      error
+    );
+    return res.status(500).json({
+      message: 'An error occurred while getting notifications; please try again later'
+    });
   }
 };
-
 
 export const createNotification = async (req: Request, res: Response) => {
   const authUser = req.currentUser;
