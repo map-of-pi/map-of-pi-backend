@@ -27,7 +27,7 @@ export const getNotifications = async (req: Request, res: Response) => {
     );
     return res.status(200).json({ items, count });
   } catch (error) {
-    logger.error(`Failed to get notifications for PiUID: ${authUser.pi_uid}`, error);
+    logger.error(`Failed to get notifications for piUID ${authUser.pi_uid}`, error);
     return res.status(500).json({
       message: 'An error occurred while getting notifications; please try again later'
     });
