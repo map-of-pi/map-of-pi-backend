@@ -33,12 +33,12 @@ export const toggleNotificationStatus = async (notification_id: string): Promise
   }
 };
 
-export async function getNotificationsAndCount(
+export const getNotificationsAndCount = async (
   pi_uid: string,
   skip: number,
   limit: number,
   status?: 'cleared' | 'uncleared'
-): Promise<{ items: INotification[]; count: number }> {
+): Promise<{ items: INotification[]; count: number }> => {
   try {
     const filter: any = { pi_uid };
     if (status === 'cleared') filter.is_cleared = true;
