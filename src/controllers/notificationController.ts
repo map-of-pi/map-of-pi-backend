@@ -2,34 +2,23 @@ import { Request, Response } from "express";
 import * as notificationService from '../services/notification.service';
 import logger from "../config/loggingConfig";
 
-type Status = 'cleared' | 'uncleared';
-const allowedStatuses: Status[] = ['cleared', 'uncleared'];
-
 export const getNotifications = async (req: Request, res: Response) => {
   const authUser = req.currentUser;
   if (!authUser) {
+    logger.warn('No authenticated user found when trying to get notifications.');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Parse skip & limit safely
-  const skipRaw = Number(req.query.skip);
-  const limitRaw = Number(req.query.limit);
-
-  if ((req.query.skip && !Number.isFinite(skipRaw)) ||
-      (req.query.limit && !Number.isFinite(limitRaw))) {
-    return res.status(400).json({ error: 'Invalid pagination values' });
-  }
-
-  const skip = Math.max(0, Math.floor(skipRaw || 0));
-  const limit = Math.min(100, Math.max(1, Math.floor(limitRaw || 20))); // enforce 1–100
-
-  // Validate status filter
-  const s = req.query.status;
-  const status: Status | undefined = allowedStatuses.includes(s as Status)
-    ? (s as Status)
-    : undefined;
-
   try {
+    // Pagination with expected defaults (1–100)
+    const skip = Math.max(0, Math.floor(Number(req.query.skip) || 0));
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit) || 20)));
+
+    // Validate status filter
+    const status = ['cleared', 'uncleared'].includes(req.query.status as string)
+      ? (req.query.status as 'cleared' | 'uncleared')
+      : undefined;
+
     const { items, count } = await notificationService.getNotificationsAndCount(
       authUser.pi_uid,
       skip,
@@ -38,10 +27,7 @@ export const getNotifications = async (req: Request, res: Response) => {
     );
     return res.status(200).json({ items, count });
   } catch (error) {
-    logger.error(
-      `Failed to get notifications for user=${authUser.pi_uid}`,
-      error
-    );
+    logger.error(`Failed to get notifications for piUID ${authUser.pi_uid}`, error);
     return res.status(500).json({
       message: 'An error occurred while getting notifications; please try again later'
     });
