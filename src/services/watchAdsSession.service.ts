@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { WatchAdsSession } from '../models/WatchAdsSession';
 import { WATCH_ADS_SESSION_STATUS } from '../models/enums/watchAds';
+import { WatchAdsBalance } from '../models/WatchAdsBalance';
 
 type CreateOpts = {
   status?: string;          // should be WATCH_ADS_SESSION_STATUS.Running
@@ -32,7 +33,6 @@ export async function createSession(userId: Types.ObjectId, opts: CreateOpts = {
     nowMs + (opts.totalSegments ?? 20) * (opts.segmentSecs ?? 30) * 1000 + 10 * 60 * 1000
   ),
 } = opts;
-
 
   // Validation
   if (totalSegments <= 0 || segmentSecs <= 0) {
@@ -77,7 +77,7 @@ export async function createSession(userId: Types.ObjectId, opts: CreateOpts = {
     }
   }
 
-  // If we hit here, repeated collisions — just return the active one if any
+  // If we hit repeated collisions — just return the active one if any
   return WatchAdsSession.findOne({
     userId,
     status: WATCH_ADS_SESSION_STATUS.Running,
@@ -85,3 +85,38 @@ export async function createSession(userId: Types.ObjectId, opts: CreateOpts = {
   }).lean();
 }
 
+export async function completeSegment(userId: Types.ObjectId, sessionId: string, adId: string) {
+  // 1. Find the session
+  const session = await WatchAdsSession.findOne({ 
+    _id: sessionId, 
+    userId, 
+    status: WATCH_ADS_SESSION_STATUS.Running 
+  });
+  if (!session) return null;
+
+  // 2. Update session progress
+  session.completedSegments += 1;
+  session.earnedSecs += session.segmentSecs;
+
+  if (session.completedSegments >= session.totalSegments) {
+    session.status = WATCH_ADS_SESSION_STATUS.Completed;
+    session.endedAt = new Date();
+  }
+
+  await session.save();
+
+  // 3. Update balance (simply adds to the count)
+  await WatchAdsBalance.findOneAndUpdate(
+    { userId },
+    {
+      $inc: {
+        availableSecs: session.segmentSecs,
+        lifetimeEarnedSecs: session.segmentSecs
+      }
+    },
+    { upsert: true, new: true }
+  );
+
+  // 4. Return updated session
+  return session.toObject();
+}
