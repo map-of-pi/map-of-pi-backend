@@ -29,9 +29,7 @@ export async function createSession(userId: Types.ObjectId, opts: CreateOpts = {
   status = WATCH_ADS_SESSION_STATUS.Running,
   totalSegments = opts.totalSegments ?? 20,
   segmentSecs = opts.segmentSecs ?? 30,
-  expiresAt = opts.expiresAt ?? new Date(
-    nowMs + (opts.totalSegments ?? 20) * (opts.segmentSecs ?? 30) * 1000 + 10 * 60 * 1000
-  ),
+  expiresAt = opts.expiresAt ?? new Date(nowMs + 24 * 60 * 60 * 1000),
 } = opts;
 
   // Validation
@@ -86,15 +84,15 @@ export async function createSession(userId: Types.ObjectId, opts: CreateOpts = {
 }
 
 export async function completeSegment(userId: Types.ObjectId, sessionId: string, adId: string) {
-  // 1. Find the session
-  const session = await WatchAdsSession.findOne({ 
-    _id: sessionId, 
-    userId, 
-    status: WATCH_ADS_SESSION_STATUS.Running 
+  // 1. Find active session
+  const session = await WatchAdsSession.findOne({
+    _id: sessionId,
+    userId,
+    status: WATCH_ADS_SESSION_STATUS.Running,
   });
   if (!session) return null;
 
-  // 2. Update session progress
+  // 2. Increment session progress
   session.completedSegments += 1;
   session.earnedSecs += session.segmentSecs;
 
@@ -105,14 +103,14 @@ export async function completeSegment(userId: Types.ObjectId, sessionId: string,
 
   await session.save();
 
-  // 3. Update balance (simply adds to the count)
+  // 3. Increment or create balance
   await WatchAdsBalance.findOneAndUpdate(
     { userId },
     {
       $inc: {
         availableSecs: session.segmentSecs,
-        lifetimeEarnedSecs: session.segmentSecs
-      }
+        lifetimeEarnedSecs: session.segmentSecs,
+      },
     },
     { upsert: true, new: true }
   );
