@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { OrderItemStatusType } from "../models/enums/orderItemStatusType";
+import { OrderStatusType } from "../models/enums/orderStatusType";
 import *  as orderService from "../services/order.service";
 import { ISeller, IUser, NewOrder } from "../types";
 import logger from "../config/loggingConfig";
@@ -7,8 +8,23 @@ import logger from "../config/loggingConfig";
 export const getSellerOrders = async (req: Request, res: Response) => {
   const seller = req.currentSeller as ISeller; 
   try {
-    const orders = await orderService.getSellerOrdersById(seller.seller_id);
-    return res.status(200).json(orders);
+    // Pagination with expected defaults (1–100)
+    const skip = Math.max(0, Math.floor(Number(req.query.skip) || 0));
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit) || 20)));
+
+    // Validate status filter
+    const validStatuses = ['initialized', 'pending', 'completed', 'cancelled'];
+    const status = validStatuses.includes(req.query.status as string)
+      ? (req.query.status as OrderStatusType)
+      : undefined;
+
+    const { items, count } = await orderService.getSellerOrdersById(
+      seller.seller_id,
+      skip,
+      limit,
+      status
+    );
+    return res.status(200).json({ items, count });
   } catch (error) {
     logger.error(`Failed to get seller orders for sellerID ${ seller.seller_id }:`, error);
     return res.status(500).json({ 
@@ -20,8 +36,23 @@ export const getSellerOrders = async (req: Request, res: Response) => {
 export const getBuyerOrders = async (req: Request, res: Response) => {
   const buyer = req.currentUser as IUser;
   try {
-    const orders = await orderService.getBuyerOrdersById(buyer.pi_uid);
-    return res.status(200).json(orders);
+    // Pagination with expected defaults (1–100)
+    const skip = Math.max(0, Math.floor(Number(req.query.skip) || 0));
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit) || 20)));
+
+    // Validate status filter
+    const validStatuses = ['initialized', 'pending', 'completed', 'cancelled'];
+    const status = validStatuses.includes(req.query.status as string)
+      ? (req.query.status as OrderStatusType)
+      : undefined;
+
+    const { items, count } = await orderService.getBuyerOrdersById(
+      buyer.pi_uid,
+      skip,
+      limit,
+      status
+    );
+    return res.status(200).json({ items, count });
   } catch (error) {
     logger.error(`Failed to get buyer orders for piUID ${ buyer.pi_uid }:`, error);
     return res.status(500).json({ 
