@@ -169,40 +169,66 @@ export const markAsPaidOrder = async (orderId: string): Promise<IOrder> => {
   }  
 };
 
-export const getSellerOrdersById = async (piUid: string) => {
+export const getSellerOrdersById = async (
+  piUid: string,
+  skip: number,
+  limit: number,
+  status?: OrderStatusType
+): Promise<{ items: IOrder[]; count: number }> => {
   try {
     const seller = await Seller.exists({ seller_id: piUid });
     if (!seller) {
       logger.warn(`Seller not found for Pi UID: ${ piUid }`);
-      return [];
+      return { items: [], count: 0 };
     }
 
-    const orders = await Order.find({ seller_id: seller?._id, is_paid: true })
-      .populate('buyer_id', 'pi_username -_id') // Populate buyer_id with pi_username
-      .sort({ createdAt: -1 }) // Sort by createdAt in descending order
-      .lean();
-    return orders;
+    const filter: any = { seller_id: seller._id, is_paid: true };
+    if (status) filter.status = status;
 
+    const [items, count] = await Promise.all([
+      Order.find(filter)
+        .populate('buyer_id', 'pi_username -_id')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Order.countDocuments(filter).exec()
+    ]);
+
+    return { items, count };
   } catch (error) {
     logger.error(`Failed to get seller orders for Pi UID ${ piUid }: ${ error }`);
     throw error;
   }
 };
 
-export const getBuyerOrdersById = async (piUid: string) => {
+export const getBuyerOrdersById = async (
+  piUid: string,
+  skip: number,
+  limit: number,
+  status?: OrderStatusType
+): Promise<{ items: IOrder[]; count: number }> => {
   try {
     const buyer = await User.exists({ pi_uid: piUid });
     if (!buyer) {
       logger.warn(`Buyer not found for Pi UID: ${ piUid }`);
-      return [];
+      return { items: [], count: 0 };
     }
 
-    const orders = await Order.find({ buyer_id: buyer?._id, is_paid: true })
-      .populate('seller_id', 'name -_id') // Populate seller_id with pi_username
-      .sort({ createdAt: -1 }) // Sort by createdAt in descending order
-      .lean();
-    return orders;
+    const filter: any = { buyer_id: buyer._id, is_paid: true };
+    if (status) filter.status = status;
 
+    const [items, count] = await Promise.all([
+      Order.find(filter)
+        .populate('seller_id', 'name -_id')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Order.countDocuments(filter).exec()
+    ]);
+
+    return { items, count };
   } catch (error) {
     logger.error(`Failed to get buyer orders for Pi UID ${ piUid }: ${ error }`);
     throw error;
