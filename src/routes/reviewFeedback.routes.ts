@@ -140,4 +140,56 @@ reviewFeedbackRoutes.post(
   reviewFeedbackController.addReview
 );
 
+/**
+ * @swagger
+ * /api/v1/review-feedback/update/{review_id}:
+ *   put:
+ *     tags:
+ *       - Review Feedback
+ *     summary: Update an existing review *
+ *     parameters:
+ *       - name: review_id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the review to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               comment:
+ *                 type: string
+ *                 example: This is a sample updated review comment.
+ *               rating:
+ *                 $ref: '/api/docs/enum/RatingScale.yml#/components/schemas/RatingScale'
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 example: http://example.com/new-image.jpg
+ *             required:
+ *               - comment
+ *               - rating
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *       404:
+ *         description: Review not found
+ *       403:
+ *         description: Forbidden
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+reviewFeedbackRoutes.put(
+  "/update/:review_id",
+  verifyToken,
+  upload.single("image"),
+  reviewFeedbackController.updateReview
+);
+
 export default reviewFeedbackRoutes;
