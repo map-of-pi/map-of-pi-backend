@@ -24,12 +24,12 @@ import * as membershipController from "../controllers/membershipController";
  *             $numberDecimal:
  *               type: string
  *           required:
- *             - $numberDecimal 
+ *             - $numberDecimal
  *         membership_expiry_date:
  *           type: string
  *           description: Membership expiration date
  *           format: date-time
- * 
+ *
  *     MembershipTiers:
  *       type: object
  *       properties:
@@ -68,7 +68,10 @@ const membershipRoutes = Router();
  *       500:
  *         description: Internal server error
  */
-membershipRoutes.get("/membership-list", membershipController.getMembershipList);
+membershipRoutes.get(
+  "/membership-list",
+  membershipController.getMembershipList
+);
 
 /**
  * @swagger
@@ -96,7 +99,10 @@ membershipRoutes.get("/membership-list", membershipController.getMembershipList)
  *       500:
  *         description: Internal server error
  */
-membershipRoutes.get("/:membership_id", membershipController.getSingleMembership);
+membershipRoutes.get(
+  "/:membership_id",
+  membershipController.getSingleMembership
+);
 
 /**
  * @swagger
@@ -121,7 +127,11 @@ membershipRoutes.get("/:membership_id", membershipController.getSingleMembership
  *       500:
  *         description: Internal server error
  */
-membershipRoutes.get("/", verifyToken, membershipController.fetchUserMembership);
+membershipRoutes.get(
+  "/",
+  verifyToken,
+  membershipController.fetchUserMembership
+);
 
 /**
  * @swagger
@@ -155,6 +165,59 @@ membershipRoutes.get("/", verifyToken, membershipController.fetchUserMembership)
  *       500:
  *         description: Internal server error
  */
-membershipRoutes.put("/manage", verifyToken, membershipController.updateMembership);
+membershipRoutes.put(
+  "/manage",
+  verifyToken,
+  membershipController.updateMembership
+);
+
+/**
+ * @swagger
+ * /api/v1/memberships/deduct-mappi:
+ *   post:
+ *     tags:
+ *       - Membership
+ *     summary: Deduct Mappi credits from a user for TrustProtect usage
+ *     security:
+ *       - bearerAuth: []  # Ensures only authenticated users can perform this action
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 example: 100
+ *                 description: Amount of Mappi to deduct (e.g., 100)
+ *     responses:
+ *       200:
+ *         description: Mappi deducted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 balance:
+ *                   type: number
+ *                 mappi_used_to_date:
+ *                   type: number
+ *       400:
+ *         description: Invalid request body
+ *       401:
+ *         description: Unauthorized access
+ *       500:
+ *         description: Internal server error
+ */
+membershipRoutes.post(
+  "/deduct-mappi",
+  verifyToken,
+  membershipController.deductMappi
+);
 
 export default membershipRoutes;
