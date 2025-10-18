@@ -191,5 +191,34 @@ reviewFeedbackRoutes.put(
   upload.single("image"),
   reviewFeedbackController.updateReview
 );
+/**
+ * @swagger
+ * /api/v1/review-feedback/trust-protect/{review_id}:
+ *   put:
+ *     tags:
+ *       - Review Feedback
+ *     summary: Apply Trust Protect on a review (admin/moderation action)
+ *     parameters:
+ *       - name: review_id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the review to apply Trust Protect on
+ *     responses:
+ *       200:
+ *         description: Trust Protect applied successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Review not found
+ *       500:
+ *         description: Internal server error
+ */
+reviewFeedbackRoutes.put(
+  "/trust-protect/:review_id",
+  verifyToken,
+  reviewFeedbackController.applyTrustProtect
+);
 
 export default reviewFeedbackRoutes;
