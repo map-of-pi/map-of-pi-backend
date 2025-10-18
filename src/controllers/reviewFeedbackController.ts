@@ -4,6 +4,8 @@ import * as reviewFeedbackService from "../services/reviewFeedback.service";
 import { uploadImage } from "../services/misc/image.service";
 
 import logger from "../config/loggingConfig";
+import * as notificationService from "../services/notification.service";
+
 
 export const getReviews = async (req: Request, res: Response) => {
   const { review_receiver_id } = req.params;
@@ -93,5 +95,39 @@ export const updateReview = async (req: Request, res: Response) => {
     }
     logger.error(`Failed to update review for userID ${req.currentUser?.pi_uid}:`, error);
     return res.status(500).json({ message: 'An error occurred while updating review; please try again later' });
+  }
+};
+export const applyTrustProtect = async (req: Request, res: Response) => {
+  try {
+    const authUser = req.currentUser;
+    const { review_id } = req.params;
+
+    if (!authUser) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const updatedReview = await reviewFeedbackService.applyTrustProtect(review_id, authUser);
+
+    // ✅ Send notification if Trust Protect changed rating to SAD
+    if (updatedReview && updatedReview.rating === 2) {
+      await notificationService.addNotification(
+        updatedReview.review_giver_id,
+        `Your review has been adjusted by Trust Protect you can reverse back the rating in the review screen.`
+      );
+      logger.info(
+        `Notification sent to review giver ${updatedReview.review_giver_id} for Trust Protect adjustment.`
+      );
+    }
+
+    return res.status(200).json({
+      message: "Trust Protect applied successfully",
+      updatedReview,
+    });
+  } catch (error: any) {
+    logger.error(
+      `Failed to apply Trust Protect for review ${req.params.review_id}:`,
+      error
+    );
+    return res.status(500).json({ message: "Failed to apply Trust Protect" });
   }
 };

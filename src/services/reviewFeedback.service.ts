@@ -3,9 +3,15 @@ import { getUser } from "./user.service";
 import ReviewFeedback from "../models/ReviewFeedback";
 import User from "../models/User";
 import UserSettings from "../models/UserSettings";
-import { IReviewFeedback, IUser, IReviewFeedbackOutput, CompleteFeedback } from "../types";
+import {
+  IReviewFeedback,
+  IUser,
+  IReviewFeedbackOutput,
+  CompleteFeedback,
+} from "../types";
 
 import logger from "../config/loggingConfig";
+import { RatingScale } from "../models/enums/ratingScale";
 
 /**
   The value is set depending on the number of zero(0) ratings in the ReviewFeedback table where this user is review-receiver. 
@@ -16,18 +22,26 @@ import logger from "../config/loggingConfig";
   When the User Registration screen is first used (before the users User record has been created) 
   then the value of “100” is displayed and saved to the DB.
 **/
-const computeRatings = async (user_settings_id: string) => {
+export const computeRatings = async (user_settings_id: string) => {
   try {
     // Fetch all reviews for the user
-    const reviewFeedbackCount = await ReviewFeedback.countDocuments({ review_receiver_id: user_settings_id }).exec();
+    const reviewFeedbackCount = await ReviewFeedback.countDocuments({
+      review_receiver_id: user_settings_id,
+    }).exec();
     if (reviewFeedbackCount === 0) {
       // Default value when there are no reviews
-      await UserSettings.findOneAndUpdate({ user_settings_id }, { trust_meter_rating: 100 }).exec();
+      await UserSettings.findOneAndUpdate(
+        { user_settings_id },
+        { trust_meter_rating: 100 }
+      ).exec();
       return 100;
     }
     // Calculate the total number of reviews and the number of zero ratings
-    const totalReviews = reviewFeedbackCount
-    const zeroRatingsCount = await ReviewFeedback.countDocuments({ review_receiver_id: user_settings_id, rating: 0 }).exec();
+    const totalReviews = reviewFeedbackCount;
+    const zeroRatingsCount = await ReviewFeedback.countDocuments({
+      review_receiver_id: user_settings_id,
+      rating: 0,
+    }).exec();
 
     // Calculate the percentage of zero ratings
     const zeroRatingsPercentage = (zeroRatingsCount / totalReviews) * 100;
@@ -35,13 +49,13 @@ const computeRatings = async (user_settings_id: string) => {
     // Determine the value based on the percentage of zero ratings
     let value;
     switch (true) {
-      case (zeroRatingsPercentage <= 5):
+      case zeroRatingsPercentage <= 5:
         value = 100;
         break;
-      case (zeroRatingsPercentage > 5 && zeroRatingsPercentage <= 10):
+      case zeroRatingsPercentage > 5 && zeroRatingsPercentage <= 10:
         value = 80;
         break;
-      case (zeroRatingsPercentage > 10 && zeroRatingsPercentage <= 20):
+      case zeroRatingsPercentage > 10 && zeroRatingsPercentage <= 20:
         value = 50;
         break;
       default:
@@ -49,23 +63,28 @@ const computeRatings = async (user_settings_id: string) => {
     }
 
     // Update the user's rating value in the database
-    await UserSettings.findOneAndUpdate({ user_settings_id }, { trust_meter_rating: value });
+    await UserSettings.findOneAndUpdate(
+      { user_settings_id },
+      { trust_meter_rating: value }
+    );
     return value;
   } catch (error: any) {
-    logger.error(`Failed to compute ratings for userSettingsID ${ user_settings_id }: ${ error }`);
+    logger.error(
+      `Failed to compute ratings for userSettingsID ${user_settings_id}: ${error}`
+    );
     throw error;
   }
 };
 
 export const getReviewFeedback = async (
-  review_receiver_id: string, 
-  searchQuery?: string 
+  review_receiver_id: string,
+  searchQuery?: string
 ): Promise<CompleteFeedback | null> => {
   try {
     //condition to search by username
     if (searchQuery && searchQuery.trim()) {
       const user = await User.findOne({
-        pi_username: searchQuery
+        pi_username: searchQuery,
       });
       if (!user) {
         return null;
@@ -74,12 +93,16 @@ export const getReviewFeedback = async (
     }
 
     const receivedFeedbackList = await ReviewFeedback.find({
-      review_receiver_id: review_receiver_id
-    }).sort({ review_date: -1 }).exec();
+      review_receiver_id: review_receiver_id,
+    })
+      .sort({ review_date: -1 })
+      .exec();
 
     const givenFeedbackList = await ReviewFeedback.find({
-      review_giver_id: review_receiver_id
-    }).sort({ review_date: -1 }).exec();
+      review_giver_id: review_receiver_id,
+    })
+      .sort({ review_date: -1 })
+      .exec();
 
     const updatedReceivedFeedbackList = await Promise.all(
       receivedFeedbackList.map(async (reviewFeedback) => {
@@ -87,11 +110,15 @@ export const getReviewFeedback = async (
         const reviewer = await getUser(reviewFeedback.review_giver_id);
         const receiver = await getUser(reviewFeedback.review_receiver_id);
 
-        const giverName = reviewer ? reviewer.user_name : '';
-        const receiverName = receiver ? receiver.user_name : '';
+        const giverName = reviewer ? reviewer.user_name : "";
+        const receiverName = receiver ? receiver.user_name : "";
 
         // Return the updated review feedback object
-        return { ...reviewFeedback.toObject(), giver: giverName, receiver: receiverName };
+        return {
+          ...reviewFeedback.toObject(),
+          giver: giverName,
+          receiver: receiverName,
+        };
       })
     );
 
@@ -101,25 +128,32 @@ export const getReviewFeedback = async (
         const reviewer = await getUser(reviewFeedback.review_giver_id);
         const receiver = await getUser(reviewFeedback.review_receiver_id);
 
-        const giverName = reviewer ? reviewer.user_name : '';
-        const receiverName = receiver ? receiver.user_name : '';
+        const giverName = reviewer ? reviewer.user_name : "";
+        const receiverName = receiver ? receiver.user_name : "";
 
         // Return the updated review feedback object
-        return { ...reviewFeedback.toObject(), giver: giverName, receiver: receiverName };
+        return {
+          ...reviewFeedback.toObject(),
+          giver: giverName,
+          receiver: receiverName,
+        };
       })
     );
     return {
       givenReviews: updatedGivenFeedbackList,
-      receivedReviews: updatedReceivedFeedbackList
+      receivedReviews: updatedReceivedFeedbackList,
     } as unknown as CompleteFeedback;
-
   } catch (error: any) {
-    logger.error(`Failed to retrieve reviews for reviewReceiverID ${ review_receiver_id }: ${ error }`);
+    logger.error(
+      `Failed to retrieve reviews for reviewReceiverID ${review_receiver_id}: ${error}`
+    );
     throw error;
   }
 };
 
-export const getReviewFeedbackById = async (review_id: string): Promise<{
+export const getReviewFeedbackById = async (
+  review_id: string
+): Promise<{
   review: IReviewFeedbackOutput | null;
   replies: IReviewFeedbackOutput[];
 } | null> => {
@@ -133,7 +167,9 @@ export const getReviewFeedbackById = async (review_id: string): Promise<{
     }
 
     // Fetch replies to the main review
-    const replies = await ReviewFeedback.find({ reply_to_review_id: review_id }).exec();
+    const replies = await ReviewFeedback.find({
+      reply_to_review_id: review_id,
+    }).exec();
 
     // Fetch giver and receiver names for each reply asynchronously
     const updatedReplyList = await Promise.all(
@@ -143,11 +179,15 @@ export const getReviewFeedbackById = async (review_id: string): Promise<{
           getUser(reply.review_receiver_id),
         ]);
 
-        const giverName = reviewer?.user_name || 'Unknown';
-        const receiverName = receiver?.user_name || 'Unknown';
+        const giverName = reviewer?.user_name || "Unknown";
+        const receiverName = receiver?.user_name || "Unknown";
 
         // Return updated reply object
-        return { ...reply.toObject(), giver: giverName, receiver: receiverName };
+        return {
+          ...reply.toObject(),
+          giver: giverName,
+          receiver: receiverName,
+        };
       })
     );
 
@@ -157,42 +197,54 @@ export const getReviewFeedbackById = async (review_id: string): Promise<{
       getUser(reviewFeedback.review_receiver_id),
     ]);
 
-    const giverName = reviewer?.user_name || 'Unknown';
-    const receiverName = receiver?.user_name || 'Unknown';
+    const giverName = reviewer?.user_name || "Unknown";
+    const receiverName = receiver?.user_name || "Unknown";
 
     // Create the main review object with giver and receiver names
-    const mainReview = { ...reviewFeedback.toObject(), giver: giverName, receiver: receiverName };
+    const mainReview = {
+      ...reviewFeedback.toObject(),
+      giver: giverName,
+      receiver: receiverName,
+    };
 
     return {
       review: mainReview as unknown as IReviewFeedbackOutput,
       replies: updatedReplyList as unknown as IReviewFeedbackOutput[],
     };
   } catch (error: any) {
-    logger.error(`Failed to retrieve review for reviewID ${ review_id }: ${ error }`);
+    logger.error(
+      `Failed to retrieve review for reviewID ${review_id}: ${error}`
+    );
     throw error;
   }
 };
 
-export const addReviewFeedback = async (authUser: IUser, formData: any, image: string): Promise<IReviewFeedback> => {
+export const addReviewFeedback = async (
+  authUser: IUser,
+  formData: any,
+  image: string
+): Promise<IReviewFeedback> => {
   try {
     const reviewFeedbackData: Partial<IReviewFeedback> = {
-      review_receiver_id: formData.review_receiver_id || '',
+      review_receiver_id: formData.review_receiver_id || "",
       review_giver_id: authUser.pi_uid,
       reply_to_review_id: formData.reply_to_review_id || null,
-      rating: formData.rating || '',
-      comment: formData.comment || '',
-      image: image || '',
-      review_date: new Date()
+      rating: formData.rating || "",
+      comment: formData.comment || "",
+      image: image || "",
+      review_date: new Date(),
     };
     const newReviewFeedback = new ReviewFeedback(reviewFeedbackData);
     const savedReviewFeedback = await newReviewFeedback.save();
 
-    const computedValue = await computeRatings(savedReviewFeedback.review_receiver_id);
+    const computedValue = await computeRatings(
+      savedReviewFeedback.review_receiver_id
+    );
     logger.info(`Computed review rating: ${computedValue}`);
 
     return savedReviewFeedback as IReviewFeedback;
   } catch (error: any) {
-    logger.error(`Failed to add review: ${ error }`);
+    logger.error(`Failed to add review: ${error}`);
     throw error;
   }
 };
@@ -206,15 +258,19 @@ export const updateReviewFeedback = async (
   const review = await ReviewFeedback.findById(reviewId).exec();
 
   if (!review) {
-    logger.error(`Review with ID ${ reviewId } not found`);
+    logger.error(`Review with ID ${reviewId} not found`);
     const error = new Error(`Review with ID ${reviewId} not found`);
     error.name = "NotFoundError";
     throw error;
   }
 
   if (review.review_giver_id !== authUser.pi_uid) {
-    logger.error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
-    const error = new Error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
+    logger.error(
+      `User with ID: ${review.review_giver_id} does not have permission to update this review`
+    );
+    const error = new Error(
+      `User with ID: ${review.review_giver_id} does not have permission to update this review`
+    );
     error.name = "ForbiddenError";
     throw error;
   }
@@ -232,6 +288,55 @@ export const updateReviewFeedback = async (
 
   await computeRatings(review.review_receiver_id);
 
-  logger.info(`Review ${reviewId} updated successfully by user ${authUser.pi_uid}`);
+  logger.info(
+    `Review ${reviewId} updated successfully by user ${authUser.pi_uid}`
+  );
   return review as IReviewFeedback;
+};
+
+export const applyTrustProtect = async (
+  reviewId: string,
+  authUser: IUser
+): Promise<IReviewFeedback | null> => {
+  try {
+    // Find the review
+    const review = await ReviewFeedback.findById(reviewId).exec();
+    if (!review) {
+      logger.error(`Review with ID ${reviewId} not found`);
+      const error = new Error(`Review with ID ${reviewId} not found`);
+      error.name = "NotFoundError";
+      throw error;
+    }
+
+    // Ensure user owns the review
+    if (review.review_receiver_id !== authUser.pi_uid) {
+      logger.error(
+        `User ${authUser.pi_uid} has no permission to Trust Protect this review`
+      );
+      const error = new Error(`Forbidden`);
+      error.name = "ForbiddenError";
+      throw error;
+    }
+
+    // Update rating (e.g., from 1 = Despair → 2 = Sad)
+    if (review.rating === RatingScale.DESPAIR) {
+      review.rating = RatingScale.SAD;
+      await review.save();
+      await computeRatings(review.review_receiver_id);
+      logger.info(
+        `Trust Protect applied to review ${reviewId} by user ${authUser.pi_uid}`
+      );
+      return review as IReviewFeedback;
+    } else {
+      logger.warn(
+        `Trust Protect not applicable. Review ${reviewId} rating is not DESPAIR`
+      );
+      return review;
+    }
+  } catch (error: any) {
+    logger.error(
+      `Failed to apply Trust Protect for reviewID ${reviewId}: ${error}`
+    );
+    throw error;
+  }
 };
