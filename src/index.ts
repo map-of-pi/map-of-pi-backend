@@ -33,6 +33,6 @@ const startServer = async () => {
 
 // Start the server setup process
 startServer();
-// scheduleCronJobs();
+scheduleCronJobs();
 
 export default app;
