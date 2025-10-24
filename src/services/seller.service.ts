@@ -1,19 +1,28 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
+import { 
+  computeNewExpiryDate, 
+  getChangeInWeeks, 
+  getRemainingWeeks 
+} from "../helpers/sellerItem";
 import Seller from "../models/Seller";
 import User from "../models/User";
 import UserSettings from "../models/UserSettings";
 import SellerItem from "../models/SellerItem";
-import { SellerType } from '../models/enums/sellerType';
+import { SellerType } from "../models/enums/sellerType";
 import { FulfillmentType } from "../models/enums/fulfillmentType";
 import { StockLevelType } from '../models/enums/stockLevelType';
 import { TrustMeterScale } from "../models/enums/trustMeterScale";
+import { deductMappiBalance } from "./membership.service";
 import { getUserSettingsById } from "./userSettings.service";
-import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem } from "../types";
-
+import { 
+  IUser, 
+  IUserSettings, 
+  ISeller, 
+  ISellerWithSettings, 
+  ISellerItem 
+} from "../types";
 import logger from "../config/loggingConfig";
-import { computeNewExpiryDate, getChangeInWeeks, getRemainingWeeks } from '../helpers/sellerItem';
-import { deductMappiBalance } from './membership.service';
-import { MappiDeductionError } from '../errors/MappiDeductionError';
+import { MappiDeductionError } from "../errors/MappiDeductionError";
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {

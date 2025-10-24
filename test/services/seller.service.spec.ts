@@ -11,6 +11,10 @@ import User from '../../src/models/User';
 import UserSettings from '../../src/models/UserSettings';
 import { IUser, ISeller, ISellerItem } from '../../src/types';
 
+jest.mock('../../src/services/membership.service', () => ({
+  deductMappiBalance: jest.fn()
+}))
+
 describe('getAllSellers function', () => {
   const mockBoundingBox = {
     sw_lat: 40.7000,
@@ -302,11 +306,10 @@ describe('addOrUpdateSellerItem function', () => {
       createdAt: '2025-02-20T00:00:00.000Z'
     } as unknown as ISellerItem;
 
-    const sellerItemData = (await addOrUpdateSellerItem(
-      { seller_id: "0c0c0c-0c0c-0c0c" } as ISeller, sellerItem)) as ISellerItem;
+    const result = await addOrUpdateSellerItem({ seller_id: "0c0c0c-0c0c-0c0c" } as ISeller, sellerItem);
 
     // Convert `sellerItemData` to a plain object if it's a Mongoose document
-    const plainObject = await convertToPlainObject(sellerItemData);
+    const plainObject = await convertToPlainObject(result.sellerItem!);
 
     const current_date = new Date();
     current_date.setHours(0, 0, 0, 0);
@@ -343,12 +346,10 @@ describe('addOrUpdateSellerItem function', () => {
       image: 'http://example.com/testSellerThreeItemOneUpdated.jpg'
     } as unknown as ISellerItem;
 
-    const sellerItemData = (
-      await addOrUpdateSellerItem(
-        { seller_id: "0b0b0b-0b0b-0b0b" } as ISeller, sellerItem)) as ISellerItem;
+    const result = await addOrUpdateSellerItem({ seller_id: "0b0b0b-0b0b-0b0b" } as ISeller, sellerItem);
 
     // Convert `sellerItemData` to a plain object if it's a Mongoose document
-    const plainObject = await convertToPlainObject(sellerItemData);
+    const plainObject = await convertToPlainObject(result.sellerItem!);
 
     const current_date = new Date();
     current_date.setHours(0, 0, 0, 0);
@@ -463,10 +464,14 @@ describe('deleteSellerItem function', () => {
   it('should throw an error when an exception occurs', async () => {  
     const sellerItem = { _id: "25f5a0f2a86d1f9f3b7e4e82" } as unknown as ISellerItem;
 
+    jest.spyOn(SellerItem, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue(sellerItem)
+    } as any);
+
     // Mock the SellerItem model to throw an error
-    jest.spyOn(SellerItem, 'findByIdAndDelete').mockImplementationOnce(() => {
-      throw new Error('Mock database error');
-    });
+    jest.spyOn(SellerItem, 'findByIdAndDelete').mockReturnValue({
+      exec: jest.fn().mockRejectedValue(new Error('Mock database error'))
+    } as any);
 
     await expect(deleteSellerItem(sellerItem._id)).rejects.toThrow(
       'Mock database error'
