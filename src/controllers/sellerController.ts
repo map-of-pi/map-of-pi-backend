@@ -142,10 +142,10 @@ export const addOrUpdateSellerItem = async (req: Request, res: Response) => {
 
     // Send response
     return res.status(200).json(item); 
-  } catch (error) {
+  } catch (error: any) {
     logger.error(`Failed to add or update seller item for userID ${currentSeller.seller_id}:`, error);
     return res.status(500).json({
-      message: 'An error occurred while adding/ updating seller item; please try again later',
+      message: error.message || 'An error occurred while adding or updating seller item; please try again later',
     });
   }
 };
