@@ -8,9 +8,11 @@ import { FulfillmentType } from "../models/enums/fulfillmentType";
 import { StockLevelType } from '../models/enums/stockLevelType';
 import { TrustMeterScale } from "../models/enums/trustMeterScale";
 import { getUserSettingsById } from "./userSettings.service";
-import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem } from "../types";
+import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem, IMembership } from "../types";
 
 import logger from "../config/loggingConfig";
+import Membership from '../models/Membership';
+import { MembershipClassType } from '../models/enums/membershipClassType';
 import { computeNewExpiryDate, getChangeInWeeks, getRemainingWeeks } from '../helpers/sellerItem';
 import { deductMappiBalance } from './membership.service';
 import { MappiDeductionError } from '../errors/MappiDeductionError';
@@ -118,24 +120,33 @@ const resolveSellerSettings = async (
 
   const sellerIds = sellers.map(seller => seller.seller_id);
 
-  // Batch fetch all relevant user settings in a single query
+  // Batch fetch all relevant user settings
   const allUserSettings = await UserSettings.find({
     user_settings_id: { $in: sellerIds }
-  }).exec();
+  }).select('user_settings_id trust_meter_rating user_name -_id').exec();
 
-  // Create a map for quick user settings lookup
+  // Batch fetch all relevant memberships
+  const sellerMemberships = await Membership.find({ pi_uid: { $in: sellerIds } })
+    .select('pi_uid membership_class -_id')
+    .exec();
+
+  // Create maps for quick lookup
   const settingsMap = new Map(
     allUserSettings.map(setting => [setting.user_settings_id, setting])
+  );
+  const membershipMap = new Map(
+    sellerMemberships.map(m => [m.pi_uid, m.membership_class])
   );
 
   const sellersWithSettings = sellers.map((seller) => {
     const sellerObject = seller.toObject();
     const userSettings = settingsMap.get(seller.seller_id);
+    const membershipClass = membershipMap.get(seller.seller_id);
 
-    // Check if the seller's trust level is allowed
+    // Check trust level filter
     const trustMeterRating = userSettings?.trust_meter_rating ?? -1;
     if (trustLevelFilters && !trustLevelFilters.includes(trustMeterRating)) {
-      return null; // Exclude this seller
+      return null;
     }
 
     try {
@@ -143,22 +154,15 @@ const resolveSellerSettings = async (
         ...sellerObject,
         trust_meter_rating: trustMeterRating,
         user_name: userSettings?.user_name,
-        findme: userSettings?.findme,
-        email: userSettings?.email ?? null,
-        phone_number: userSettings?.phone_number ?? null,
-        search_filters: userSettings?.search_filters ?? null,
+        membership_class: membershipClass ?? null,
       } as ISellerWithSettings;
     } catch (error) {
       logger.error(`Failed to resolve settings for sellerID ${seller.seller_id}:`, error);
-
-      // Return a fallback seller object with minimal information
       return {
         ...sellerObject,
         trust_meter_rating: TrustMeterScale.ZERO,
         user_name: seller.name,
-        findme: null,
-        email: null,
-        phone_number: null,
+        membership_class: membershipClass ?? null,
       } as unknown as ISellerWithSettings;
     }
   });
@@ -191,6 +195,7 @@ export const getAllSellers = async (
     
     // Execute query
     const finalSellerDocs = await Seller.find(sellerQuery)
+      .select('seller_id name image seller_type sell_map_center isRestricted lastSanctionUpdateAt -_id')
       .sort({ updatedAt: -1 })
       .limit(maxNumSellers)
       .exec();
@@ -206,11 +211,12 @@ export const getAllSellers = async (
 // Fetch a single seller by ID
 export const getSingleSellerById = async (seller_id: string): Promise<ISeller | null> => {
   try {
-    const [seller, userSettings, user, items] = await Promise.all([
+    const [seller, userSettings, user, items, membership] = await Promise.all([
       Seller.findOne({ seller_id }).exec(),
       UserSettings.findOne({ user_settings_id: seller_id }).exec(),
       User.findOne({ pi_uid: seller_id }).exec(),
-      SellerItem.find({ seller_id: seller_id }).exec()
+      SellerItem.find({ seller_id: seller_id }).exec(),
+      Membership.findOne({ pi_uid: seller_id }).select('membership_class -_id').exec()
     ]);
 
     if (!seller && !userSettings && !user) {
@@ -221,7 +227,8 @@ export const getSingleSellerById = async (seller_id: string): Promise<ISeller | 
       sellerShopInfo: seller as ISeller,
       sellerSettings: userSettings as IUserSettings,
       sellerInfo: user as IUser,
-      sellerItems: items as ISellerItem[] || null
+      sellerItems: items as ISellerItem[] || null,
+      sellerMembership: membership?.membership_class as MembershipClassType || null,
     } as any;
   } catch (error) {
     logger.error(`Failed to get single seller for sellerID ${ seller_id }: ${ error }`);
