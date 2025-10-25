@@ -262,6 +262,40 @@ export const applyMembershipChange = async (
   }
 };
 
+export const addMappiBalance = async (
+  pi_uid: string, 
+  amount: number,
+  type: string
+): Promise<number> => {
+  if (amount <= 0) {
+    logger.warn(`Attempted to ${type} non-positive Mappi amount for ${pi_uid}: ${amount}`);
+    return 0;
+  }
+
+  try {
+    const updatedMembership = await Membership.findOneAndUpdate(
+      { pi_uid },
+      { $inc: { mappi_balance: amount } },
+      { new: true }
+    ).exec();
+
+    if (!updatedMembership) {
+      throw new Error(`Membership not found or unable to ${type} ${amount} Mappi to balance for ${pi_uid}`);
+    }
+    logger.info(`Mappi added successfully`, {
+      pi_uid,
+      amount,
+      type,
+      new_balance: updatedMembership.mappi_balance,
+    });
+
+    return amount;
+  } catch (error) {
+    logger.error(`Failed to ${type} Mappi to balance for ${pi_uid}: ${error}`);
+    throw error;
+  }
+};
+
 export const deductMappiBalance = async (
   pi_uid: string, 
   amount: number
