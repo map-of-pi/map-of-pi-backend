@@ -148,7 +148,7 @@ describe('sellerController', () => {
       expect(uploadImage).toHaveBeenCalledWith('0c0c0c-0c0c-0c0c', req.file, 'seller-item');
       expect(sellerService.addOrUpdateSellerItem).toHaveBeenCalledWith(req.currentSeller, req.body);
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ sellerItem: expectedNewSellerItem });
+      expect(res.json).toHaveBeenCalledWith(expectedNewSellerItem);
     });
 
     it('should return appropriate [500] when adding/ updating seller item fails', async () => {
