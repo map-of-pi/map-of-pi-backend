@@ -9,7 +9,7 @@ import { FulfillmentType } from "../../src/models/enums/fulfillmentType";
 import { OrderStatusType } from "../../src/models/enums/orderStatusType";
 import { OrderItemStatusType } from "../../src/models/enums/orderItemStatusType";
 import { StockLevelType } from "../../src/models/enums/stockLevelType";
-import { NewOrder, PickedItems } from "../../src/types";
+import { deductMappiBalance } from '../../src/services/membership.service';
 import { 
   createOrder,
   deleteOrderById,
@@ -19,7 +19,10 @@ import {
   markAsPaidOrder,
   updateOrderStatus,
   updatePaidOrder
-} from '../../src/services/order.service';
+} from "../../src/services/order.service";
+import { NewOrder, PickedItems } from "../../src/types";
+import { StockValidationError } from "../../src/errors/StockValidationError";
+import { MappiDeductionError } from "../../src/errors/MappiDeductionError";
 
 jest.mock('../../src/helpers/order');
 jest.mock('../../src/models/Order');
@@ -27,6 +30,9 @@ jest.mock('../../src/models/OrderItem');
 jest.mock('../../src/models/Seller');
 jest.mock('../../src/models/SellerItem');
 jest.mock('../../src/models/User');
+jest.mock('../../src/services/membership.service', () => ({
+  deductMappiBalance: jest.fn()
+}))
 
 describe('createOrder function', () => {
   const mockSession = {
@@ -98,6 +104,8 @@ describe('createOrder function', () => {
       }
     ] as any); 
 
+    (deductMappiBalance as jest.Mock).mockResolvedValue(true);
+
     const result = await createOrder(orderData);
 
     expect(mongoose.startSession).toHaveBeenCalled();
@@ -119,6 +127,7 @@ describe('createOrder function', () => {
       { session: mockSession }
     );
     expect(SellerItem.bulkWrite).toHaveBeenCalledWith(expect.any(Array), { session: mockSession });
+    expect(deductMappiBalance).toHaveBeenCalledWith(orderData.buyerPiUid, 1);
     expect(mockSession.commitTransaction).toHaveBeenCalled();
     expect(result).toEqual(mockSavedOrder);
   });
@@ -162,7 +171,9 @@ describe('createOrder function', () => {
         subtotal: Types.Decimal128.fromString('25'),
         status: OrderItemStatusType.Pending,
       }
-    ] as any); 
+    ] as any);
+    
+    (deductMappiBalance as jest.Mock).mockResolvedValue(true);
 
     const result = await createOrder(orderData);
 
@@ -184,6 +195,7 @@ describe('createOrder function', () => {
       { session: mockSession }
     );
     expect(SellerItem.bulkWrite).not.toHaveBeenCalled();
+    expect(deductMappiBalance).toHaveBeenCalledWith(orderData.buyerPiUid, 1);
     expect(mockSession.commitTransaction).toHaveBeenCalled();
     expect(result).toEqual(mockSavedOrder);
   });
@@ -260,7 +272,7 @@ describe('createOrder function', () => {
     // Return only one item even though two were expected
     (SellerItem.find as jest.Mock).mockReturnValueOnce({
       session: jest.fn().mockResolvedValue([
-        { _id: 'item2_TEST', price: 10, stock_level: StockLevelType.AVAILABLE_1 },
+        { _id: 'item1_TEST', price: 10, stock_level: StockLevelType.AVAILABLE_1 },
         // item2_TEST is missing
       ]),
     } as any);
@@ -304,6 +316,79 @@ describe('createOrder function', () => {
     
     expect(Seller.findOne).toHaveBeenCalledWith({ seller_id: orderData.sellerPiUid });
     expect(User.findOne).toHaveBeenCalledWith({ pi_uid: orderData.buyerPiUid });
+    expect(mockSession.abortTransaction).toHaveBeenCalled();
+    expect(mockSession.endSession).toHaveBeenCalled();
+  });
+
+  it('should abort transaction and throw StockValidationError when stock validation fails', async () => {
+    const mockSavedOrder = { 
+      _id: 'orderId4_TEST',
+      ...orderData,
+      is_paid: false,
+      is_fulfilled: false,
+    };
+  
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid }),
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid }),
+    });
+  
+    const mockSave = jest.fn().mockResolvedValue(mockSavedOrder);
+    (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
+  
+    (SellerItem.find as jest.Mock).mockReturnValueOnce({
+      session: jest.fn().mockResolvedValue([
+        { _id: 'item1_TEST', price: 10, stock_level: StockLevelType.AVAILABLE_1 },
+        { _id: 'item2_TEST', price: 5, stock_level: StockLevelType.MANY_AVAILABLE },
+      ]),
+    } as any);
+  
+    // Simulate StockValidationError
+    const stockError = new StockValidationError('Mock stock error', 'item1_TEST');
+    (getUpdatedStockLevel as jest.Mock).mockImplementation(() => { throw stockError; });
+  
+    await expect(createOrder(orderData)).rejects.toThrow(StockValidationError);
+  
+    expect(mockSession.abortTransaction).toHaveBeenCalled();
+    expect(mockSession.endSession).toHaveBeenCalled();
+  });
+
+  it('should abort transaction and throw MappiDeductionError when deduction fails', async () => {
+    const mockSavedOrder = { 
+      _id: 'orderId4_TEST',
+      ...orderData,
+      is_paid: false,
+      is_fulfilled: false,
+    };
+  
+    (Seller.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ seller_id: orderData.sellerPiUid }),
+    });
+    (User.findOne as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ pi_uid: orderData.buyerPiUid }),
+    });
+  
+    const mockSave = jest.fn().mockResolvedValue(mockSavedOrder);
+    (Order as unknown as jest.Mock).mockImplementation(() => ({ save: mockSave }));
+  
+    (SellerItem.find as jest.Mock).mockReturnValueOnce({
+      session: jest.fn().mockResolvedValue([
+        { _id: 'item1_TEST', price: 10, stock_level: StockLevelType.AVAILABLE_1 },
+        { _id: 'item2_TEST', price: 5, stock_level: StockLevelType.MANY_AVAILABLE },
+      ]),
+    } as any);
+  
+    (getUpdatedStockLevel as jest.Mock).mockReturnValue(StockLevelType.SOLD);
+  
+    // Simulate MappiDeductionError
+    const mappiDeductionError = new MappiDeductionError(orderData.buyerPiUid, 1, 'Mock deduction error');
+    (deductMappiBalance as jest.Mock).mockRejectedValue(mappiDeductionError);
+  
+    await expect(createOrder(orderData)).rejects.toThrow(MappiDeductionError);
+  
+    expect(deductMappiBalance).toHaveBeenCalledWith(orderData.buyerPiUid, 1);
     expect(mockSession.abortTransaction).toHaveBeenCalled();
     expect(mockSession.endSession).toHaveBeenCalled();
   });

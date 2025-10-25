@@ -15,6 +15,7 @@ import {
 import { IMembership, IUser, MembershipOption } from "../types";
 
 import logger from "../config/loggingConfig";
+import { MappiDeductionError } from "../errors/MappiDeductionError";
 
 /* Helper functions */
 const handleSingleMappiPurchase = async (
@@ -231,25 +232,6 @@ export const getSingleMembershipById = async (membership_id: string) => {
   }
 };
 
-export const updateMappiBalance = async (pi_uid: string, amount: number) => {
-  try {
-    const updatedMembership = await Membership.findOneAndUpdate(
-      { pi_uid },
-      { $inc: { mappi_balance: amount } }, // atomic increment
-      { new: true }
-    ).exec();
-
-    if (!updatedMembership) {
-      throw new Error('Membership not found');
-    }
-
-    return updatedMembership;
-  } catch (error) {
-    logger.error(`Failed to update Mappi balance for piUID ${ pi_uid }: ${ error}`);
-    throw error;
-  }
-};
-
 export const applyMembershipChange = async (
   piUid: string, 
   membership_class: MembershipClassType | MappiCreditType
@@ -277,5 +259,78 @@ export const applyMembershipChange = async (
   } catch (error) {
     logger.error(`Failed to apply membership change for ${ piUid }: ${ error }`);
     throw error;
+  }
+};
+
+export const addMappiBalance = async (
+  pi_uid: string, 
+  amount: number,
+  type: string
+): Promise<number> => {
+  if (amount <= 0) {
+    logger.warn(`Attempted to ${type} non-positive Mappi amount for ${pi_uid}: ${amount}`);
+    return 0;
+  }
+
+  try {
+    const updatedMembership = await Membership.findOneAndUpdate(
+      { pi_uid },
+      { $inc: { mappi_balance: amount } },
+      { new: true }
+    ).exec();
+
+    if (!updatedMembership) {
+      throw new Error(`Membership not found or unable to ${type} ${amount} Mappi to balance for ${pi_uid}`);
+    }
+    logger.info(`Mappi added successfully`, {
+      pi_uid,
+      amount,
+      type,
+      new_balance: updatedMembership.mappi_balance,
+    });
+
+    return amount;
+  } catch (error) {
+    logger.error(`Failed to ${type} Mappi to balance for ${pi_uid}: ${error}`);
+    throw error;
+  }
+};
+
+export const deductMappiBalance = async (
+  pi_uid: string, 
+  amount: number
+): Promise<number> => {
+  
+  if (amount === 0) return 0;
+  
+  try {
+    // Atomic deduction: only succeeds if balance is sufficient
+    const updatedMembership = await Membership.findOneAndUpdate(
+      { pi_uid, mappi_balance: { $gte: amount } }, // only update if balance is sufficient
+      { $inc: { mappi_balance: -amount } },
+      { new: true }
+    ).exec();
+
+    if (!updatedMembership) {
+      throw new MappiDeductionError(pi_uid, amount, 'Membership not found or insufficient balance');
+    }
+
+    logger.info(`Mappi deducted successfully`, {
+      pi_uid,
+      amount,
+      remaining_balance: updatedMembership.mappi_balance,
+    });
+
+    return amount;
+  } catch (err: any) {
+    const message = err instanceof Error ? err.message : String(err);
+
+    const errorToThrow =
+      err instanceof MappiDeductionError
+        ? err
+        : new MappiDeductionError(pi_uid, amount, message || 'Unknown error');
+
+    logger.error(`${errorToThrow.name} for piUID ${ pi_uid }: ${ message }`);
+    throw errorToThrow;
   }
 };
