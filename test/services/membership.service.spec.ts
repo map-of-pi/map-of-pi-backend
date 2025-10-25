@@ -18,9 +18,11 @@ import {
   buildMembershipList, 
   getSingleMembershipById, 
   getUserMembership, 
-  updateMappiBalance
+  addMappiBalance,
+  deductMappiBalance
 } from "../../src/services/membership.service";
 import { IMembership, IUser } from "../../src/types";
+import { MappiDeductionError } from "../../src/errors/MappiDeductionError";
 
 jest.mock('../../src/helpers/membership');
 jest.mock('../../src/models/Membership');
@@ -246,22 +248,21 @@ describe('getSingleMembershipById function', () => {
   });
 
   it('should throw an error if getting single membership fails', async () => {
-    const mockError = new Error('Mock database error');
+    const mockError = new Error('Database connection failed');
 
     (Membership.findById as jest.Mock).mockReturnValue({
       lean: jest.fn().mockRejectedValue(mockError),
     });
 
     await expect(getSingleMembershipById(membership_id))
-      .rejects.toThrow('Mock database error');
+      .rejects.toThrow('Database connection failed');
     
     expect(Membership.findById).toHaveBeenCalledWith(membership_id);
   });
 });
 
-describe('updateMappiBalance function', () => {
+describe('addMappiBalance function', () => {
   const pi_uid = 'piUID_TEST';
-  const amount = 10;
 
   const mockMembership = {
     user_id: new Types.ObjectId(),
@@ -272,14 +273,19 @@ describe('updateMappiBalance function', () => {
     mappi_used_to_date: 50,
   } as unknown as IMembership;
 
-  it('should update the Mappi balance successfully', async () => {
+  it('should add Mappi balance successfully', async () => {
+    const amount = 5;
+
     (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
-      exec: jest.fn().mockResolvedValue({ ...mockMembership, mappi_balance: 110 }),
+      exec: jest.fn().mockResolvedValue({ 
+        ...mockMembership, 
+        mappi_balance: mockMembership.mappi_balance + amount 
+      }),
     });
 
-    const result = await updateMappiBalance(pi_uid, amount);
+    const result = await addMappiBalance(pi_uid, amount, 'refund');
 
-    expect(result).toEqual({...mockMembership, mappi_balance: 110 });
+    expect(result).toBe(amount);
     expect(Membership.findOneAndUpdate).toHaveBeenCalledWith(
       { pi_uid },
       { $inc: { mappi_balance: amount } },
@@ -287,36 +293,158 @@ describe('updateMappiBalance function', () => {
     );
   });
 
-  it('should throw an error if membership is not found', async () => {
+  it('should return 0 if amount is 0 or negative', async () => {
+    const resultZero = await addMappiBalance(pi_uid, 0, 'refund');
+    const resultNegative = await addMappiBalance(pi_uid, -5, 'purchase');
+
+    expect(resultZero).toBe(0);
+    expect(resultNegative).toBe(0);
+    expect(Membership.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error if membership not found', async () => {
+    const amount = 10;
+    const type = 'refund';
+
+    // Simulate DB rejecting because membership not found
     (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
       exec: jest.fn().mockResolvedValue(null),
     });
 
-    await expect(updateMappiBalance(pi_uid, amount)).rejects.toThrow(
-      'Membership not found'
+    await expect(addMappiBalance(pi_uid, amount, type)).rejects.toThrow(
+      `Membership not found or unable to ${type} ${amount} Mappi to balance for ${pi_uid}`
     );
-
-    expect(Membership.findOneAndUpdate).toHaveBeenCalledWith(
-      { pi_uid },
-      { $inc: { mappi_balance: amount } },
-      { new: true }
-    );
-  });
-
-  it('should throw an error if updating Mappi balance fails', async () => {
-    const mockError = new Error('Mock database error');
-
-    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
-      exec: jest.fn().mockRejectedValue(mockError),
-    });
-
-    await expect(updateMappiBalance(pi_uid, amount))
-      .rejects.toThrow('Mock database error');
     
     expect(Membership.findOneAndUpdate).toHaveBeenCalledWith(
       { pi_uid },
       { $inc: { mappi_balance: amount } },
       { new: true }
+    );
+  });
+
+  it('should throw an error if adding Mappi to balance fails', async () => {
+    const mockError = new Error('Database connection failed');
+
+    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockRejectedValue(mockError)
+    });
+
+    await expect(addMappiBalance(pi_uid, 10, 'refund')).rejects.toThrow(mockError);
+  });
+});
+
+describe('deductMappiBalance function', () => {
+  const pi_uid = 'piUID_TEST';
+
+  const mockMembership = {
+    user_id: new Types.ObjectId(),
+    pi_uid,
+    membership_class: MembershipClassType.GOLD,
+    mappi_balance: 100,
+    membership_expiry_date: new Date(),
+    mappi_used_to_date: 50,
+  } as unknown as IMembership;
+
+  it('should deduct the Mappi balance successfully', async () => {
+    const amount = 10;
+
+    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ 
+        ...mockMembership, 
+        mappi_balance: mockMembership.mappi_balance - amount 
+      }),
+    });
+
+    const result = await deductMappiBalance(pi_uid, amount);
+
+    expect(result).toBe(amount);
+    expect(Membership.findOneAndUpdate).toHaveBeenCalledWith(
+      { pi_uid, mappi_balance: { $gte: amount } },
+      { $inc: { mappi_balance: -amount } },
+      { new: true }
+    );
+  });
+
+  it('should simulate concurrent deduction attempts and deduct accordingly', async () => {
+    const execMock = jest
+      .fn()
+      // First deduction attempt call succeeds
+      .mockResolvedValueOnce({ ...mockMembership, mappi_balance: 90 })
+      // Second deduction attempt call fails due to insufficient balance
+      .mockResolvedValueOnce(null);
+
+    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({ exec: execMock });
+
+    const firstAttempt = deductMappiBalance(pi_uid, 10);
+    const secondAttempt = deductMappiBalance(pi_uid, 10);
+
+    const [firstResult, secondError] = await Promise.allSettled([firstAttempt, secondAttempt]);
+
+    expect(firstResult.status).toBe('fulfilled');
+    expect((firstResult as PromiseFulfilledResult<number>).value).toBe(10);
+
+    expect(secondError.status).toBe('rejected');
+    expect((secondError as PromiseRejectedResult).reason).toBeInstanceOf(MappiDeductionError);
+  });
+
+  it('should return 0 if amount is 0', async () => {
+    const result = await deductMappiBalance(pi_uid, 0);
+    
+    expect(result).toBe(0);
+    expect(Membership.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('should throw MappiDeductionError if membership not found', async () => {
+    const amount = 10;
+
+    // Simulate DB rejecting because membership not found
+    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue(null),
+    });
+
+    await expect(deductMappiBalance(pi_uid, amount)).rejects.toThrow(MappiDeductionError);
+    await expect(deductMappiBalance(pi_uid, amount)).rejects.toThrow(
+      'Membership not found or insufficient balance'
+    );
+    
+    expect(Membership.findOneAndUpdate).toHaveBeenCalledWith(
+      { pi_uid, mappi_balance: { $gte: amount } },
+      { $inc: { mappi_balance: -amount } },
+      { new: true }
+    );
+  });
+
+  it('should throw MappiDeductionError if insufficient balance', async () => {
+    const amount = 200;
+
+    // Simulate DB rejecting because balance < amount
+    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue(null),
+    });
+
+    await expect(deductMappiBalance(pi_uid, amount)).rejects.toThrow(MappiDeductionError);
+    await expect(deductMappiBalance(pi_uid, amount)).rejects.toThrow(
+      'Membership not found or insufficient balance'
+    );
+    
+    expect(Membership.findOneAndUpdate).toHaveBeenCalledWith(
+      { pi_uid, mappi_balance: { $gte: amount } },
+      { $inc: { mappi_balance: -amount } },
+      { new: true }
+    );
+  });
+
+  it('should wrap unexpected errors into MappiDeductionError', async () => {
+    const amount = 10;
+    const mockError = new Error('Database connection failed');
+
+    (Membership.findOneAndUpdate as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockRejectedValue(mockError),
+    });
+
+    await expect(deductMappiBalance(pi_uid, amount)).rejects.toThrow(MappiDeductionError);
+    await expect(deductMappiBalance(pi_uid, amount)).rejects.toThrow(
+      'Database connection failed'
     );
   });
 });
@@ -523,13 +651,13 @@ describe('applyMembershipChange function', () => {
     });
 
     it('should throw error if handling single Mappi purchase unexpectedly fails', async () => {
-      const mockError = new Error('Mock database error');
+      const mockError = new Error('Database connection failed');
       
       (Membership.findOne as jest.Mock).mockResolvedValue(null);
       (Membership.create as jest.Mock).mockRejectedValue(mockError);
 
       await expect(applyMembershipChange(mockUser.pi_uid, MappiCreditType.SINGLE))
-          .rejects.toThrow('Mock database error');
+          .rejects.toThrow('Database connection failed');
       
       expect(User.findOne).toHaveBeenCalledWith({ pi_uid: mockUser.pi_uid });
       expect(Membership.findOne).toHaveBeenCalledWith({ user_id: mockUser._id });
@@ -907,7 +1035,7 @@ describe('applyMembershipChange function', () => {
     });
 
     it('should throw error if membership not found and returned during update', async () => {
-      const mockError = new Error('Mock database error');
+      const mockError = new Error('Database connection failed');
       
       const existingExpiryDate = new Date(
         new Date("2025-08-17T12:00:00Z").getTime() * WEEK_IN_MS);
@@ -936,7 +1064,7 @@ describe('applyMembershipChange function', () => {
       });
 
       await expect(applyMembershipChange(mockUser.pi_uid, newMembershipClass))
-        .rejects.toThrow('Mock database error');
+        .rejects.toThrow('Database connection failed');
 
       expect(Membership.findOne).toHaveBeenCalledWith({ user_id: mockUser._id });
       expect(Membership.create).not.toHaveBeenCalled();

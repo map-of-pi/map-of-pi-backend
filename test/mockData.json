@@ -433,7 +433,7 @@
       "price": 0.25,
       "stock_level": "Ongoing service",
       "image": "http://example.com/testSellerTwoItemTwo.jpg",
-      "duration": 1,
+      "duration": 3,
       "expired_by": "2025-01-17T00:00:00.000Z",
       "createdAt": "2025-01-10T00:00:00.000Z",
       "updatedAt": "2025-01-10T00:00:00.000Z"
