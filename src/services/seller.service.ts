@@ -1,21 +1,30 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
+import { 
+  computeNewExpiryDate, 
+  getChangeInWeeks, 
+  getRemainingWeeks 
+} from "../helpers/sellerItem";
+import Membership from '../models/Membership';
 import Seller from "../models/Seller";
 import User from "../models/User";
 import UserSettings from "../models/UserSettings";
 import SellerItem from "../models/SellerItem";
-import { SellerType } from '../models/enums/sellerType';
+import { MembershipClassType } from '../models/enums/membershipClassType';
+import { SellerType } from "../models/enums/sellerType";
 import { FulfillmentType } from "../models/enums/fulfillmentType";
 import { StockLevelType } from '../models/enums/stockLevelType';
 import { TrustMeterScale } from "../models/enums/trustMeterScale";
+import { addMappiBalance, deductMappiBalance } from "./membership.service";
 import { getUserSettingsById } from "./userSettings.service";
-import { IUser, IUserSettings, ISeller, ISellerWithSettings, ISellerItem, IMembership } from "../types";
-
+import { 
+  IUser, 
+  IUserSettings, 
+  ISeller, 
+  ISellerWithSettings, 
+  ISellerItem
+} from "../types";
 import logger from "../config/loggingConfig";
-import Membership from '../models/Membership';
-import { MembershipClassType } from '../models/enums/membershipClassType';
-import { computeNewExpiryDate, getChangeInWeeks, getRemainingWeeks } from '../helpers/sellerItem';
-import { deductMappiBalance } from './membership.service';
-import { MappiDeductionError } from '../errors/MappiDeductionError';
+import { MappiDeductionError } from "../errors/MappiDeductionError";
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {
@@ -337,36 +346,46 @@ export const addOrUpdateSellerItem = async (
 
     if (existingItem) {
       // --- Update existing item ---
-      const changeInWeeks = getChangeInWeeks(existingItem, item);
+      const changeInWeeks = getChangeInWeeks(existingItem, item) ?? 0;
       logger.info(`Change in duration (weeks): ${changeInWeeks}`);
 
       if (changeInWeeks !== 0) {
-        // Deduct/add mappi only if duration changes
-        await deductMappiBalance(seller.seller_id, changeInWeeks);
-        consumedMappi = -changeInWeeks;
+        if (changeInWeeks > 0) {
+          // Seller is extending listing; deduct Mappi
+          await deductMappiBalance(seller.seller_id, changeInWeeks);
+          consumedMappi = -changeInWeeks;
+        } else if (changeInWeeks < 0) {
+          // Seller is reducing listing; refund unused weeks
+          await addMappiBalance(seller.seller_id, Math.abs(changeInWeeks), 'refund');
+          consumedMappi = Math.abs(changeInWeeks);
+        }
       }
 
       // Compute new expiry date
       const newExpiry = computeNewExpiryDate(existingItem, item);
       logger.debug(`Computed new expiry date: ${newExpiry}`);
 
+      // Ensure duration is always valid and numeric
+      const newDuration = Math.max(
+        Number(existingItem.duration ?? 0) + Number(changeInWeeks ?? 0), 1);
+
       // Update fields
       existingItem.set({
         ...item,
-        duration: Math.max(Number(existingItem.duration) + changeInWeeks, 1),
-        expired_by: newExpiry,
+        duration: newDuration,
         image: item.image || existingItem.image,
         price: item.price ?? existingItem.price,
         stock_level: item.stock_level ?? existingItem.stock_level,
         description: item.description ?? existingItem.description,
         name: item.name ?? existingItem.name,
+        expired_by: newExpiry,
       });
 
       savedItem = await existingItem.save();
       logger.info('Seller item updated successfully', { id: savedItem._id });
     } else {
       // --- Create new item ---
-      const now = new Date();
+      const now = new Date(Date.now());
       const duration = Math.max(Number(item.duration) || 1, 1);
       const expiredBy = new Date(now.getTime() + duration * 7 * 24 * 60 * 60 * 1000);
 
@@ -408,15 +427,15 @@ export const addOrUpdateSellerItem = async (
 // Delete existing seller item
 export const deleteSellerItem = async (id: string): Promise<ISellerItem | null> => {
   try {
-    const item = await SellerItem.findById(id).exec()
+    const item = await SellerItem.findById(id).exec();
     if (!item) {
       logger.warn(`Seller item with ID ${ id } not found for deletion.`);
       return null;
     }
 
-    // refund mappi equivallent to remaining weeks if not 0
-    const remweeks = getRemainingWeeks(item)
-    await deductMappiBalance(item.seller_id, -remweeks);
+    // refund mappi equivalent to remaining weeks if not 0
+    const remweeks = getRemainingWeeks(item);
+    await addMappiBalance(item.seller_id, remweeks, 'refund');
     
     const deletedSellerItem = await SellerItem.findByIdAndDelete(id).exec();
     return deletedSellerItem ? deletedSellerItem as ISellerItem : null;

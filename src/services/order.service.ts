@@ -12,8 +12,8 @@ import User from "../models/User";
 import { OrderStatusType } from "../models/enums/orderStatusType";
 import { OrderItemStatusType } from "../models/enums/orderItemStatusType";
 import { IOrder, NewOrder } from "../types";
-import logger from "../config/loggingConfig";
 import { deductMappiBalance } from "./membership.service";
+import logger from "../config/loggingConfig";
 import { MappiDeductionError } from "../errors/MappiDeductionError";
 
 export const createOrder = async (
@@ -107,7 +107,7 @@ export const createOrder = async (
     if (error instanceof StockValidationError) {
       logger.warn(`Stock validation failed: ${error.message}`, { itemId: error.itemId });
     } else if (error instanceof MappiDeductionError) {
-      logger.error(`MappiDeduction Error for piUID ${error.pi_uid}: ${error.message}`); 
+      logger.error(`Mappi deduction failed for PiUID: ${error.pi_uid}: ${error.message}`); 
     } else {
       logger.error(`Failed to create order and update stock: ${error}`);
     }
