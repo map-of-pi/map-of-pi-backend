@@ -69,54 +69,57 @@ const buildTrustLevelFilters = (searchFilters: any): TrustMeterScale[] => {
 };
 
 const buildSearchQuery = async (
-  baseCriteria: Record<string, any>, search_query?: string | string[]
+  baseCriteria: Record<string, any>,
+  search_query?: string
 ): Promise<Record<string, any>> => {
-  if (!search_query || search_query.length === 0) return baseCriteria;
+  if (!search_query || !search_query.trim()) return baseCriteria;
 
-  const searchTerms = Array.isArray(search_query)
-    ? search_query.filter(term => term)
-    : search_query.split(' ').filter(term => term);
+  const normalizedQuery = search_query.trim();
 
-  if (searchTerms.length === 0) return baseCriteria;
+  /**
+   * Seller field search
+   */
+  const sellerTextSearch = { $text: { $search: normalizedQuery } };
 
-  const regexQueries = searchTerms.map(term => ({ $regex: term, $options: 'i' }));
-
-  // Fields to search in Seller, User, and UserSettings
-  const fieldsToSearch = [
-    // Seller fields
-    { 'name': { $all: regexQueries } },
-    { 'description': { $all: regexQueries } },
-    { 'address': { $all: regexQueries } },
-    // User fields (via lookup)
-    { 'user.pi_username': { $all: regexQueries } },
-    // UserSettings fields (via lookup)
-    { 'userSettings.user_name': { $all: regexQueries } },
-    { 'userSettings.email': { $all: regexQueries } },
-  ];
-
-  // Match sellers via items
-  const sellerIdsFromItems = await SellerItem.find({
+   /**
+   * Sellers matched through SellerItems
+   */
+   const sellerIdsFromItems = await SellerItem.find({
     stock_level: { $ne: StockLevelType.SOLD },
     expired_by: { $gt: new Date() },
+    $text: { $search: normalizedQuery }
+  }).distinct("seller_id");
+
+  /**
+   * Sellers matched through User field i.e., pi_username
+   */
+  const sellerIdsFromUsers = await User.find({
+    $text: { $search: normalizedQuery }
+  }).distinct("pi_uid");
+
+  /**
+   * Sellers matched through UserSetting fields i.e., user_name, email
+   */
+  const sellerIdsFromUserSettings = await UserSettings.find({
+    $text: { $search: normalizedQuery }
+  }).distinct("user_settings_id");
+
+  // Combine all matching IDs from lookups; deduplicated
+  const aggregatedSellerIdMatches = [
+    ...new Set([
+      ...sellerIdsFromItems,
+      ...sellerIdsFromUsers,
+      ...sellerIdsFromUserSettings,
+    ]),
+  ];
+
+  return {
+    ...baseCriteria,
     $or: [
-      { name: { $all: regexQueries } },
-      { description: { $all: regexQueries } },
+      sellerTextSearch,
+      { seller_id: { $in: aggregatedSellerIdMatches } }
     ]
-  }).distinct('seller_id');
-
-  const searchQuery = {
-    $and: [
-      baseCriteria,
-      {
-        $or: [
-          ...fieldsToSearch,
-          { seller_id: { $in: sellerIdsFromItems } },
-        ],
-      },
-    ],
   };
-
-  return searchQuery;
 };
 
 const addGeoFilter = (
@@ -169,7 +172,8 @@ const resolveSellerSettings = async (
   );
 
   const sellersWithSettings = sellers.map((seller) => {
-    const sellerObject = seller.toObject();
+    // Safe conversion: if seller is a Mongoose doc, call toObject(), otherwise keep as is
+    const sellerObject = seller.toObject ? seller.toObject() : seller;
     const userSettings = settingsMap.get(seller.seller_id);
     const membershipClass = membershipMap.get(seller.seller_id);
 
@@ -220,30 +224,24 @@ export const getAllSellers = async (
     // [Trust Level Filters]
     const trustLevelFilters = buildTrustLevelFilters(searchFilters);
 
+    // Normalize search query
+    const normalizedSearchQuery =
+      Array.isArray(search_query) ? search_query.join(" ").trim() : search_query?.trim();
+ 
     // Build seller query
-    const sellerQuery = await buildSearchQuery(baseCriteria, search_query);
-    
-    // Execute query
+    const sellerQuery = await buildSearchQuery(baseCriteria, normalizedSearchQuery);
+    // Execute aggregation
     const finalSellerDocs = await Seller.aggregate([
       { $match: sellerQuery },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'seller_id',
-          foreignField: 'pi_uid',
-          as: 'user',
-        },
-      },
-      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: 'usersettings',
-          localField: 'seller_id',
-          foreignField: 'user_settings_id',
-          as: 'userSettings',
-        },
-      },
-      { $unwind: { path: '$userSettings', preserveNullAndEmptyArrays: true } },
+      // Only include lookups if search query is provided
+      ...(normalizedSearchQuery?.length
+        ? [
+            { $lookup: { from: 'users', localField: 'seller_id', foreignField: 'pi_uid', as: 'user' } },
+            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+            { $lookup: { from: 'usersettings', localField: 'seller_id', foreignField: 'user_settings_id', as: 'userSettings' } },
+            { $unwind: { path: '$userSettings', preserveNullAndEmptyArrays: true } },
+          ]
+        : []),
       { $sort: { updatedAt: -1 } },
       { $limit: maxNumSellers },
     ]);
