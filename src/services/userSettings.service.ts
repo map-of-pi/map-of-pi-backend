@@ -58,9 +58,8 @@ export const addOrUpdateUserSettings = async (
       updateData.findme = formData.findme;
     }
 
-     
-    if (formData.wallet_address) {
-      updateData.wallet_address = formData.wallet_address;
+    if (formData.wallet_address !== undefined) {
+      updateData.wallet_address = formData.wallet_address?.trim() || null;
     }
 
     if (formData.search_filters) {
@@ -72,7 +71,7 @@ export const addOrUpdateUserSettings = async (
       const updatedUserSettings = await UserSettings.findOneAndUpdate(
         { user_settings_id: authUser.pi_uid },
         { $set: updateData },
-        { new: true }
+        { new: true, runValidators: true, context: 'query' }
       ).exec();
 
       return updatedUserSettings as IUserSettings;

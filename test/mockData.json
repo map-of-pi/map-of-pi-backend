@@ -57,7 +57,8 @@
         "include_trust_level_80": true,
         "include_trust_level_50": true,
         "include_trust_level_0": true
-      }
+      },
+      "wallet_address": "GARXTFND5IQK5BFQPGQXUGLXOINQJJKQMEUX7KQYEPFLDPRG6B5I36CC"
     },
     {
       "user_settings_id": "0b0b0b-0b0b-0b0b",
@@ -79,7 +80,8 @@
         "include_trust_level_80": true,
         "include_trust_level_50": false,
         "include_trust_level_0": false
-      }
+      },
+      "wallet_address": null
     },
     {
       "user_settings_id": "0c0c0c-0c0c-0c0c",
