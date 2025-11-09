@@ -71,9 +71,8 @@ const userSettingsSchema = new Schema<IUserSettings>(
     wallet_address: {  
       type: String,
       trim: true,
-      match: /^[A-Z2-7]{56}$/,
-      required: false,  
-      default: null,  
+      required: false,
+      default: null,
     },
   }
 );

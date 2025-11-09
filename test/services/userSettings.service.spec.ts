@@ -74,7 +74,7 @@ describe('addOrUpdateUserSettings function', () => {
   });
 
   describe('Additional wallet_address field validation', () => {
-    it('should save wallet_address when a valid address is provided', async () => {
+    it('should save wallet_address when a value is provided', async () => {
       const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
 
       const userSettingsData = await addOrUpdateUserSettings(
@@ -108,16 +108,6 @@ describe('addOrUpdateUserSettings function', () => {
       );
 
       expect(userSettingsData.wallet_address).toBeNull();
-    });
-
-    it('should not save wallet_address and throw an error when an invalid address is provided', async () => {
-      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
-
-      await expect(addOrUpdateUserSettings(
-        userData,
-        { ...formData, wallet_address: 'INVALID_WALLET_ADDRESS' },
-        formData.image ?? ''
-      )).rejects.toThrow();
     });
   });
 });
