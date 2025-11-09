@@ -207,7 +207,7 @@ const resolveSellerSettings = async (
 // Fetch all sellers or within a specific bounding box; optional search query.
 export const getAllSellers = async (
   bounds?: { sw_lat: number, sw_lng: number, ne_lat: number, ne_lng: number },
-  search_query?: string | string[],
+  search_query?: string,
   userId?: string,
 ): Promise<ISellerWithSettings[]> => {
   try {
@@ -225,8 +225,7 @@ export const getAllSellers = async (
     const trustLevelFilters = buildTrustLevelFilters(searchFilters);
 
     // Normalize search query
-    const normalizedSearchQuery =
-      Array.isArray(search_query) ? search_query.join(" ").trim() : search_query?.trim();
+    const normalizedSearchQuery = search_query?.trim() || "";
  
     // Build seller query
     const sellerQuery = await buildSearchQuery(baseCriteria, normalizedSearchQuery);
