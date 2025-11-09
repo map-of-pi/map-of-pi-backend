@@ -77,43 +77,13 @@ const orderRoutes = Router();
  *     tags:
  *       - Order
  *     summary: Get orders associated with the seller *
- *     parameters:
- *       - name: skip
- *         in: query
- *         required: false
- *         schema:
- *           type: integer
- *           default: 0
- *         description: Number of orders to skip
- *       - name: limit
- *         in: query
- *         required: false
- *         schema:
- *           type: integer
- *           default: 20
- *         description: Maximum number of orders to return
- *       - name: status
- *         in: query
- *         required: false
- *         schema:
- *           type: string
- *           enum: [initialized, pending, completed, cancelled]
- *         description: Filter orders by status
  *     responses:
  *       200:
  *         description: Successful response
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                items:
- *                  type: array
- *                  items:
- *                    $ref: '/api/docs/OrdersSchema.yml#/components/schemas/GetOrdersRs'
- *                count:
- *                  type: integer
- *                  description: Total number of matching orders
+*                $ref: '/api/docs/OrdersSchema.yml#/components/schemas/GetOrdersRs'
  *       401:
  *         description: Unauthorized
  *       400:
@@ -130,43 +100,13 @@ orderRoutes.get("/seller-orders", verifyToken, isSellerFound, orderController.ge
  *     tags:
  *       - Order
  *     summary: Get orders associated with the buyer *
- *     parameters:
- *       - name: skip
- *         in: query
- *         required: false
- *         schema:
- *           type: integer
- *           default: 0
- *         description: Number of orders to skip
- *       - name: limit
- *         in: query
- *         required: false
- *         schema:
- *           type: integer
- *           default: 20
- *         description: Maximum number of orders to return
- *       - name: status
- *         in: query
- *         required: false
- *         schema:
- *           type: string
- *           enum: [initialized, pending, completed, cancelled]
- *         description: Filter orders by status
  *     responses:
  *       200:
  *         description: Successful response
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                items:
- *                  type: array
- *                  items:
- *                    $ref: '/api/docs/OrdersSchema.yml#/components/schemas/GetOrdersRs'
- *                count:
- *                  type: integer
- *                  description: Total number of matching orders
+*                $ref: '/api/docs/OrdersSchema.yml#/components/schemas/GetOrdersRs'
  *       401:
  *         description: Unauthorized
  *       400:
