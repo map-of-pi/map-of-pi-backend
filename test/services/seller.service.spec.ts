@@ -1,5 +1,6 @@
 import Seller from '../../src/models/Seller';
 import SellerItem from '../../src/models/SellerItem';
+import { StockLevelType } from '../../src/models/enums/stockLevelType';
 import { addMappiBalance, deductMappiBalance } from '../../src/services/membership.service';
 import { 
   getAllSellers,
@@ -36,18 +37,15 @@ describe('getAllSellers function', () => {
     ne_lng: -73.8000
   };
 
-  it('should fetch all unrestricted sellers when all parameters are empty', async () => {
+  it('should fetch all unrestricted sellers when all parameters are empty w/ all search filters enabled', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     const sellersData = await getAllSellers(undefined, undefined, userData.pi_uid);
 
-    expect(sellersData).toHaveLength(
-      await Seller.find({ 
-        isRestricted: { $ne: true } 
-      }).countDocuments()
-    )
+    const expectedCount = await Seller.countDocuments({ isRestricted: { $ne: true } });
+    expect(sellersData).toHaveLength(expectedCount);
   });
 
-  it('should fetch all unrestricted and applicable sellers when all parameters are empty and userSettings does not exist', async () => {
+  it('should fall back to default search filters when userSettings do not exist', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser17' }) as IUser;
     const userSettings = await UserSettings.findOne({ user_settings_id: userData.pi_uid });
     expect(userSettings).toBeNull();
@@ -126,13 +124,67 @@ describe('getAllSellers function', () => {
     const userData = await User.findOne({ pi_username: 'TestUser13' }) as IUser;
     
     // Mock the Seller model to throw an error
-    jest.spyOn(Seller, 'find').mockImplementationOnce(() => {
+    jest.spyOn(Seller, 'aggregate').mockImplementationOnce(() => {
       throw new Error('Mock database error');
     });
 
     await expect(getAllSellers(undefined, undefined, userData.pi_uid)).rejects.toThrow(
       'Mock database error'
     );
+  });
+
+  describe('Additional Search query lookup cases', () => {
+    it('should fetch the appropriate seller when search query matches a User field i.e., pi_username', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const result = await getAllSellers(undefined, 'TestUser2', userData.pi_uid);
+
+      const expectedSeller = await Seller.findOne({ seller_id: '0b0b0b-0b0b-0b0b' });
+      
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ seller_id: expectedSeller?.seller_id })
+        ])
+      );
+    });
+
+    it('should fetch the appropriate seller when search query matches a UserSettings field i.e., user_name)', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const result = await getAllSellers(undefined, 'Test Three', userData.pi_uid);
+
+      const expectedSeller = await Seller.findOne({ seller_id: '0c0c0c-0c0c-0c0c' });
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ seller_id: expectedSeller?.seller_id })
+        ])
+      );
+    });
+
+    it('should fetch the appropriate seller(s) when search query matches a SellerItem field i.e., name, description', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const result = await getAllSellers(undefined, 'Item 2', userData.pi_uid);
+
+      const matchedSellerIds = await SellerItem.find({
+        stock_level: { $ne: StockLevelType.SOLD },
+        expired_by: { $gt: new Date() },
+        $text: { $search: 'Item 2' }
+      }).distinct("seller_id");
+
+      const expectedSellers = await Seller.find({
+        seller_id: { $in: matchedSellerIds },
+        isRestricted: { $ne: true },
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(
+        expect.arrayContaining(
+          expectedSellers.map(s => expect.objectContaining({ seller_id: s.seller_id }))
+        )
+      );
+    });
   });
 });
 

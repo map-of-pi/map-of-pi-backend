@@ -395,7 +395,7 @@
       "stock_level": "1 available",
       "image": "http://example.com/testSellerOneItemOne.jpg",
       "duration": 1,
-      "expired_by": "2025-01-15T00:00:00.000Z",
+      "expired_by": "2026-01-15T00:00:00.000Z",
       "createdAt": "2025-01-08T00:00:00.000Z",
       "updatedAt": "2025-01-08T00:00:00.000Z"
     },
@@ -408,7 +408,7 @@
       "stock_level": "2 available",
       "image": "http://example.com/testSellerOneItemTwo.jpg",
       "duration": 2,
-      "expired_by": "2025-01-22T00:00:00.000Z",
+      "expired_by": "2026-01-22T00:00:00.000Z",
       "createdAt": "2025-01-08T00:00:00.000Z",
       "updatedAt": "2025-01-08T00:00:00.000Z"
     },
@@ -421,7 +421,7 @@
       "stock_level": "Sold",
       "image": "http://example.com/testSellerTwoItemOne.jpg",
       "duration": 1,
-      "expired_by": "2025-01-16T00:00:00.000Z",
+      "expired_by": "2026-01-16T00:00:00.000Z",
       "createdAt": "2025-01-09T00:00:00.000Z",
       "updatedAt": "2025-01-09T00:00:00.000Z"
     },
@@ -434,7 +434,7 @@
       "stock_level": "Ongoing service",
       "image": "http://example.com/testSellerTwoItemTwo.jpg",
       "duration": 3,
-      "expired_by": "2025-01-17T00:00:00.000Z",
+      "expired_by": "2026-01-17T00:00:00.000Z",
       "createdAt": "2025-01-10T00:00:00.000Z",
       "updatedAt": "2025-01-10T00:00:00.000Z"
     }
