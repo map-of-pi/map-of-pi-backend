@@ -43,6 +43,7 @@ export interface IUserSettings extends Document {
     include_trust_level_50: Boolean;
     include_trust_level_0: Boolean;
   };
+  wallet_address?: string | null; 
 };
 
 // Select specific fields from IUserSettings
