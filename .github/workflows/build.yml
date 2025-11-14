@@ -19,6 +19,10 @@ jobs:
   build:
     name: 🏗️ Build
     runs-on: ubuntu-latest
+
+    env:
+      WALLET_PRIVATE_SEED: ${{ secrets.WALLET_PRIVATE_SEED }}
+      
     # The sequence of tasks that will be executed as part of the job
     steps:
       - name: Checkout code

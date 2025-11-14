@@ -8,9 +8,9 @@ export const getToggles = async (): Promise<IToggle[]> => {
     const toggles = await Toggle.find().sort({ createdAt: -1 }).exec();
     logger.info(`Successfully retrieved ${toggles.length} toggle(s)`);    
     return toggles;
-  } catch (error) {
-    logger.error('Failed to retrieve toggles:', error);
-    throw new Error('Failed to get toggles; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to retrieve toggles: ${ error }`);
+    throw error;
   }
 };
 
@@ -18,9 +18,9 @@ export const getToggleByName = async (name: string): Promise<IToggle | null> => 
   try {
     const toggle = await Toggle.findOne({ name }).exec();    
     return toggle ? toggle as IToggle : null;
-  } catch (error) {
-    logger.error(`Failed to retrieve toggle with identifier ${ name }:`, error);
-    throw new Error('Failed to get toggle; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to retrieve toggle with identifier ${ name }: ${ error }`);
+    throw error;
   }
 };
 
@@ -42,8 +42,8 @@ export const addToggle = async (toggleData: IToggle): Promise<IToggle> => {
     if (error.message.includes('already exists')) {
       throw error;
     }
-    logger.error('Failed to add toggle:', error);
-    throw new Error('Failed to add toggle; please try again later');
+    logger.error(`Failed to add toggle: ${ error }`);
+    throw error;
   }
 };
 
@@ -77,8 +77,8 @@ export const updateToggle = async (
     if (error.message.includes('does not exist')) {
       throw error;
     }
-    logger.error('Failed to update toggle:', error);
-    throw new Error('Failed to update toggle; please try again later');
+    logger.error(`Failed to update toggle: ${ error }`);
+    throw error;
   }
 };
 
@@ -92,8 +92,8 @@ export const deleteToggleByName = async (name: string): Promise<IToggle | null> 
     }
     logger.info('Toggle successfully deleted in the database:', deletedToggle);
     return deletedToggle as IToggle;
-  } catch (error) {
-    logger.error(`Failed to delete toggle with identifier ${ name }:`, error);
-    throw new Error('Failed to delete toggle; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to delete toggle with identifier ${ name }: ${ error }`);
+    throw error;
   }
 };

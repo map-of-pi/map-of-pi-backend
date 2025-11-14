@@ -1,0 +1,10 @@
+components:
+  schemas:
+    OrderStatusType:
+      type: string
+      enum:
+        - initialized
+        - pending
+        - completed
+        - cancelled
+      description: The type of order status.

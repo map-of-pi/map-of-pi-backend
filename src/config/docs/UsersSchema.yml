@@ -49,9 +49,8 @@ components:
         token:
           type: string
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NjZiYmFlNGEwNWJjYzNkOGRmYWI1NjMiLCJpYXQiOjE3MTgzMzk0MDksImV4cCI6MTcyMDkzMTQwOX0.gFz-EdHoOqz3-AuFX5R4uGtruFaTMH8sTOXEX-3c7yw
-      required:
-        - user
-        - token
+        membership_class:
+          $ref: '/api/docs/enum/MembershipClassType.yml#/components/schemas/MembershipClassType' 
 
     GetUserRs:
       type: object
@@ -73,9 +72,9 @@ components:
               example: Test Alias
             __v:
               type: integer
-              example: 0    
-      required:
-        - user
+              example: 0  
+        membership_class:
+          $ref: '/api/docs/enum/MembershipClassType.yml#/components/schemas/MembershipClassType'
 
     DeleteUserRs:
       type: object
@@ -178,6 +177,3 @@ components:
                       items:
                         type: number
                       example: [-73.856077, 40.848447]
-                  required:
-                    - type
-                    - coordinates

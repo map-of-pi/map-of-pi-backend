@@ -34,7 +34,7 @@ const fileFilter = (
       code: "INVALID_FILE_TYPE",
       message: "Wrong format | Please upload an image with one of the following formats: .jpg, .jpeg, or .png.",
     };
-    cb(new Error(error.message));
+    cb(new Error(error));
     return;
   }
   cb(null, true);

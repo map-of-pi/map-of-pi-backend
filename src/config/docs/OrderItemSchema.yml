@@ -1,0 +1,53 @@
+components:
+  schemas:
+    GetOrderItemsRs:
+      type: array
+      items:
+        type: object
+        properties:
+          order_id:
+            type: string
+            example: 0d367ba3a2e8438086c3ab7c0b7890co
+          seller_item:
+            $ref: '/api/docs/SellersItemSchema.yml#/components/schemas/GetSellerItemRs'  
+          quantity:
+            type: integer
+            example: 2
+          subtotal:
+            type: string
+            example: 20.00
+          status:
+            $ref: '/api/docs/enum/OrderItemStatusType.yml#/components/schemas/OrderItemStatusType'
+          createdAt:
+            type: string
+            format: date-time
+            example: 2025-05-25T00:00:00.000Z
+          updatedAt:
+            type: string
+            format: date-time
+            example: 2025-05-26T00:00:00.000Z
+    
+    GetOrderItemRs:
+      type: object
+      properties:
+        order_id:
+          type: string
+          example: 0d367ba3a2e8438086c3ab7c0b7890co
+        seller_item:
+          $ref: '/api/docs/SellersItemSchema.yml#/components/schemas/GetSellerItemRs'  
+        quantity:
+          type: integer
+          example: 2
+        subtotal:
+          type: string
+          example: 20.00
+        status:
+          $ref: '/api/docs/enum/OrderItemStatusType.yml#/components/schemas/OrderItemStatusType'
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-05-25T00:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-05-26T00:00:00.000Z

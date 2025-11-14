@@ -15,9 +15,9 @@ export const getMapCenterById = async (map_center_id: string, type: string): Pro
     } else {
       return null;
     }
-  } catch (error) {
-    logger.error(`Failed to retrieve Map Center for mapCenterID ${ map_center_id }:`, error);
-    throw new Error('Failed to retrieve Map Center; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to retrieve Map Center for mapCenterID ${ map_center_id }: ${ error }`);
+    throw error;
   }
 };
 
@@ -53,8 +53,8 @@ export const createOrUpdateMapCenter = async (
       }
     }
     return setCenter;
-    } catch (error) {
-    logger.error(`Failed to create or update Map Center for ${ type }:`, error);
-    throw new Error('Failed to create or update Map Center; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to create or update Map Center for ${ type }: ${ error }`);
+    throw error;
   }
 };

@@ -1,10 +1,11 @@
+import { uploadImage } from "./misc/image.service";
 import { getUser } from "./user.service";
 import ReviewFeedback from "../models/ReviewFeedback";
+import User from "../models/User";
 import UserSettings from "../models/UserSettings";
 import { IReviewFeedback, IUser, IReviewFeedbackOutput, CompleteFeedback } from "../types";
 
 import logger from "../config/loggingConfig";
-import User from "../models/User";
 
 /**
   The value is set depending on the number of zero(0) ratings in the ReviewFeedback table where this user is review-receiver. 
@@ -50,9 +51,9 @@ const computeRatings = async (user_settings_id: string) => {
     // Update the user's rating value in the database
     await UserSettings.findOneAndUpdate({ user_settings_id }, { trust_meter_rating: value });
     return value;
-  } catch (error) {
-    logger.error(`Failed to compute ratings for userSettingsID ${ user_settings_id }:`, error);
-    throw new Error('Failed to compute ratings; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to compute ratings for userSettingsID ${ user_settings_id }: ${ error }`);
+    throw error;
   }
 };
 
@@ -112,9 +113,9 @@ export const getReviewFeedback = async (
       receivedReviews: updatedReceivedFeedbackList
     } as unknown as CompleteFeedback;
 
-  } catch (error) {
-    logger.error(`Failed to retrieve reviews for reviewReceiverID ${review_receiver_id}:`, error);
-    throw new Error('Failed to retrieve reviews; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to retrieve reviews for reviewReceiverID ${ review_receiver_id }: ${ error }`);
+    throw error;
   }
 };
 
@@ -166,9 +167,9 @@ export const getReviewFeedbackById = async (review_id: string): Promise<{
       review: mainReview as unknown as IReviewFeedbackOutput,
       replies: updatedReplyList as unknown as IReviewFeedbackOutput[],
     };
-  } catch (error) {
-    logger.error(`Failed to retrieve review for reviewID ${review_id}:`, error);
-    throw new Error('Failed to retrieve review; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to retrieve review for reviewID ${ review_id }: ${ error }`);
+    throw error;
   }
 };
 
@@ -190,8 +191,47 @@ export const addReviewFeedback = async (authUser: IUser, formData: any, image: s
     logger.info(`Computed review rating: ${computedValue}`);
 
     return savedReviewFeedback as IReviewFeedback;
-  } catch (error) {
-    logger.error('Failed to add review:', error);
-    throw new Error('Failed to add review; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to add review: ${ error }`);
+    throw error;
   }
+};
+
+export const updateReviewFeedback = async (
+  reviewId: string,
+  authUser: IUser,
+  formData: any,
+  file?: Express.Multer.File
+): Promise<IReviewFeedback | null> => {
+  const review = await ReviewFeedback.findById(reviewId).exec();
+
+  if (!review) {
+    logger.error(`Review with ID ${ reviewId } not found`);
+    const error = new Error(`Review with ID ${reviewId} not found`);
+    error.name = "NotFoundError";
+    throw error;
+  }
+
+  if (review.review_giver_id !== authUser.pi_uid) {
+    logger.error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
+    const error = new Error(`User with ID: ${ review.review_giver_id } does not have permission to update this review`);
+    error.name = "ForbiddenError";
+    throw error;
+  }
+
+  // Update fields
+  if (formData.rating !== undefined) review.rating = formData.rating;
+  if (formData.comment !== undefined) review.comment = formData.comment;
+
+  // Handle image (keep existing unless a new file is uploaded)
+  if (file) {
+    review.image = await uploadImage(authUser.pi_uid, file, "review-feedback");
+  }
+
+  await review.save();
+
+  await computeRatings(review.review_receiver_id);
+
+  logger.info(`Review ${reviewId} updated successfully by user ${authUser.pi_uid}`);
+  return review as IReviewFeedback;
 };

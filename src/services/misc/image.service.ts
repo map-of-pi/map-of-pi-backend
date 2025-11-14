@@ -11,8 +11,8 @@ export const uploadImage = async (publicId: string, file: Express.Multer.File, f
     });
     logger.info('Image has been uploaded successfully');
     return result.secure_url;
-  } catch (error) {
-    logger.error('Failed to upload image:', error);
-    throw new Error('Failed to upload image; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to upload image: ${ error }`);
+    throw error;
   }
 };

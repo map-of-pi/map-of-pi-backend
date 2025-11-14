@@ -21,7 +21,7 @@ describe('getToggles function', () => {
     });
     
     await expect(getToggles()).rejects.toThrow(
-      'Failed to get toggles; please try again later'
+      'Mock database error'
     );
   });
 });
@@ -50,7 +50,7 @@ describe('getToggleByName function', () => {
     });
     
     await expect(getToggleByName("testToggle")).rejects.toThrow(
-      'Failed to get toggle; please try again later'
+      'Mock database error'
     );
   });
 });
@@ -89,7 +89,7 @@ describe('addToggle function', () => {
       name: "testToggle_3",
       enabled: true,
       description: "Toggle for testing_3"
-    } as IToggle)).rejects.toThrow('Failed to add toggle; please try again later');
+    } as IToggle)).rejects.toThrow('Mock database error');
   });
 });
 
@@ -127,7 +127,7 @@ describe('updateToggle function', () => {
       throw new Error('Mock database error');
     });
     
-    await expect(updateToggle("testToggle", false, "")).rejects.toThrow('Failed to update toggle; please try again later');
+    await expect(updateToggle("testToggle", false, "")).rejects.toThrow('Mock database error');
   });
 });
 
@@ -155,7 +155,7 @@ describe('deleteToggleByName function', () => {
     });
     
     await expect(deleteToggleByName("testToggle_1")).rejects.toThrow(
-      'Failed to delete toggle; please try again later'
+      'Mock database error'
     );
   });
 });

@@ -1,0 +1,8 @@
+components:
+  schemas:
+    PaymentType:
+      type: string
+      enum:
+        - Membership
+        - Buyer Checkout
+      description: The type of payment.

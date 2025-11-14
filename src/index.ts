@@ -1,11 +1,11 @@
 import dotenv from "dotenv";
 
-import { scheduleCronJobs } from "./cron";
-import "./config/sentryConnection";
 import { connectDB } from "./config/dbConnection";
+import logger from "./config/loggingConfig";
+import "./config/sentryConnection";
+import { scheduleCronJobs } from "./cron";
 import app from "./utils/app";
 import { env } from "./utils/env";
-import logger from "./config/loggingConfig";
 
 dotenv.config();
 
@@ -25,9 +25,6 @@ const startServer = async () => {
         });
       });
     }
-
-
-
     logger.info("Server setup initiated.");
   } catch (error) {
     logger.error('Server failed to initialize:', error);
@@ -36,7 +33,6 @@ const startServer = async () => {
 
 // Start the server setup process
 startServer();
-// Start the scheduled cron job(s)
 scheduleCronJobs();
 
 export default app;

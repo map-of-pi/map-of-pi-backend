@@ -1,0 +1,109 @@
+components:
+  schemas:
+    GetOrdersRs:
+      type: array
+      items:
+        type: object
+        properties:
+          payment_id:
+            type: string
+            example: 0d367ba3a2e8438086c3ab7c0b7890c0
+          buyer_id:
+            type: string
+            example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890b0
+          seller_id:
+            type: string
+            example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890s0
+          total_amount:
+            type: object
+            properties:
+              $numberDecimal:
+                type: string
+                example: 25.0
+            required:
+              - $numberDecimal
+          is_paid:
+            type: boolean
+            example: true
+          is_fulfilled:
+            type: boolean
+            example: true
+          status:
+            $ref: '/api/docs/enum/OrderStatusType.yml#/components/schemas/OrderStatusType'
+          fulfillment_type:
+            $ref: '/api/docs/enum/FulfillmentType.yml#/components/schemas/FulfillmentType'
+          buyer_fulfillment_description:
+            type: string
+            example: This is a sample buyer fulfillment description.
+          seller_fulfillment_description:
+            type: string
+            example: This is a sample seller fulfillment description.
+
+    GetSingleOrderRs:
+      type: object
+      properties:
+        payment_id:
+          type: string
+          example: 0d367ba3a2e8438086c3ab7c0b7890c0
+        buyer_id:
+          type: string
+          example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890b0
+        seller_id:
+          type: string
+          example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890s0
+        total_amount:
+          type: object
+          properties:
+            $numberDecimal:
+              type: string
+              example: 25.0
+          required:
+            - $numberDecimal
+        is_paid:
+          type: boolean
+          example: true
+        is_fulfilled:
+          type: boolean
+          example: true
+        status:
+          $ref: '/api/docs/enum/OrderStatusType.yml#/components/schemas/OrderStatusType'
+        fulfillment_type:
+          $ref: '/api/docs/enum/FulfillmentType.yml#/components/schemas/FulfillmentType'
+        buyer_fulfillment_description:
+          type: string
+          example: This is a sample buyer fulfillment description.
+        seller_fulfillment_description:
+          type: string
+          example: This is a sample seller fulfillment description.
+        orderItems:
+          type: array
+          items:
+            $ref: '/api/docs/OrderItemSchema.yml#/components/schemas/GetOrderItemsRs'  
+        pi_username:
+          type: string
+          example: test_alias
+
+    CreateOrderRq:
+      type: object
+      properties:
+        orderId:
+          type: string
+          example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890o0
+        orderData:
+          $ref: '/api/docs/OrdersSchema.yml#/components/schemas/GetSingleOrderRs'
+        orderItems:
+          type: array
+          items:
+            $ref: '/api/docs/OrderItemSchema.yml#/components/schemas/GetOrderItemsRs'
+      required:
+        - orderData
+        - orderItems
+
+    DeleteOrderRs:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Order deleted successfully.
+        deletedOrder:
+          $ref: '/api/docs/OrdersSchema.yml#/components/schemas/GetSingleOrderRs'

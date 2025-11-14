@@ -1,0 +1,9 @@
+components:
+  schemas:
+    OrderItemStatusType:
+      type: string
+      enum:
+        - pending
+        - fulfilled
+        - refunded
+      description: The type of order item status.

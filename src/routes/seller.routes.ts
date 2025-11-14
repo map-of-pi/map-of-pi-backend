@@ -282,7 +282,7 @@ sellerRoutes.delete(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '/api/docs/SellersItemSchema.yml#/components/schemas/GetSellerItemRs'
+*                $ref: '/api/docs/SellersItemSchema.yml#/components/schemas/GetSellerItemsRs'
  *       404:
  *         description: Seller not found
  *       400:

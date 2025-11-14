@@ -9,9 +9,9 @@ export const getUserSettingsById = async (user_settings_id: string): Promise<IUs
   try {
     const userSettings = await UserSettings.findOne({ user_settings_id }).exec();
     return userSettings;
-  } catch (error) {
-    logger.error(`Failed to retrieve user settings for userSettingsID ${ user_settings_id }:`, error);
-    throw new Error('Failed to get user settings; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to retrieve user settings for userSettingsID ${ user_settings_id }: ${ error}`);
+    throw error;
   }
 };
 
@@ -83,9 +83,9 @@ export const addOrUpdateUserSettings = async (
       const savedUserSettings = await newUserSettings.save();
       return savedUserSettings as IUserSettings;
     }
-  } catch (error) {
-    logger.error('Failed to add or update user settings:', error);
-    throw new Error('Failed to add or update user settings; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to add or update user settings: ${ error }`);
+    throw error;
   }
 };
 
@@ -94,9 +94,9 @@ export const deleteUserSettings = async (user_settings_id: string): Promise<IUse
   try {
     const deletedUserSettings = await UserSettings.findOneAndDelete({ user_settings_id: user_settings_id }).exec();
     return deletedUserSettings ? deletedUserSettings as IUserSettings : null;
-  } catch (error) {
-    logger.error(`Failed to delete user settings for userSettingsID ${ user_settings_id }:`, error);
-    throw new Error('Failed to delete user settings; please try again later');
+  } catch (error: any) {
+    logger.error(`Failed to delete user settings for userSettingsID ${ user_settings_id }: ${ error}`);
+    throw error;
   }
 };
 
@@ -131,10 +131,10 @@ export const getLocationByIP = async (): Promise<{ lat: number; lng: number } | 
       return { lat: data.latitude, lng: data.longitude };
     }
     logger.warn("New user search center from IP is null")
-    return null
+    return null;
   } catch (error: any) {
-    logger.warn('Failed to retrieve location by IP: ' + error.message)
-    return null
+    logger.error('Failed to retrieve location by IP:', error);
+    return null;
   }
 };
 
@@ -161,7 +161,7 @@ export const userLocation = async (uid: string): Promise<{ lat: number; lng: num
       return location;
 
     } catch (error) {
-      logger.error("Failed to retrieve device location:", error);
+      logger.error('Failed to retrieve device location:', error);
       return null;
     }
   }

@@ -1,0 +1,30 @@
+components:
+  schemas:
+    Notification:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique identifier for the notification instance
+          example: 60f8b4f9f8261c001f53c123
+        pi_uid:
+          type: string
+          description: Pi user ID associated with the notification
+          example: 0d367ba3-a2e8-4380-86c3-ab7c0b7890s1
+        reason:
+          type: string
+          example: This is a sample reason for notification.
+        is_cleared:
+          type: boolean
+          description: Indicates whether the notification has been cleared
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp of when the notification was created
+          example: 2025-06-20T14:25:43.511Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp of the last update to the notification
+          example: 2025-06-20T14:30:12.341Z

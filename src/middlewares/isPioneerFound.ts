@@ -12,7 +12,6 @@ export const isPioneerFound = async (
     const tokenFromHeader = authHeader && authHeader.split(" ")[1];
 
     try {
-      logger.info("Verifying user's access token with the /me endpoint.");
       // Verify the user's access token with the /me endpoint:
       const me = await platformAPIClient.get(`/v2/me`, { 
         headers: { 'Authorization': `Bearer ${ tokenFromHeader }` }  
