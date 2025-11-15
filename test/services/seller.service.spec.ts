@@ -1,5 +1,7 @@
 import Seller from '../../src/models/Seller';
 import SellerItem from '../../src/models/SellerItem';
+import { StockLevelType } from '../../src/models/enums/stockLevelType';
+import { addMappiBalance, deductMappiBalance } from '../../src/services/membership.service';
 import { 
   getAllSellers,
   registerOrUpdateSeller,
@@ -9,7 +11,23 @@ import {
 } from '../../src/services/seller.service';
 import User from '../../src/models/User';
 import UserSettings from '../../src/models/UserSettings';
+import { 
+  getChangeInWeeks,
+  getRemainingWeeks, 
+  computeNewExpiryDate 
+} from '../../src/helpers/sellerItem';
 import { IUser, ISeller, ISellerItem } from '../../src/types';
+
+jest.mock('../../src/services/membership.service', () => ({
+  addMappiBalance: jest.fn(),
+  deductMappiBalance: jest.fn()
+}));
+
+jest.mock('../../src/helpers/sellerItem', () => ({
+  getChangeInWeeks: jest.fn(),
+  getRemainingWeeks: jest.fn(),
+  computeNewExpiryDate: jest.fn()
+}));
 
 describe('getAllSellers function', () => {
   const mockBoundingBox = {
@@ -19,14 +37,15 @@ describe('getAllSellers function', () => {
     ne_lng: -73.8000
   };
 
-  it('should fetch all applicable sellers when all parameters are empty', async () => {
+  it('should fetch all unrestricted sellers when all parameters are empty w/ all search filters enabled', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     const sellersData = await getAllSellers(undefined, undefined, userData.pi_uid);
 
-    expect(sellersData).toHaveLength(await Seller.countDocuments());
+    const expectedCount = await Seller.countDocuments({ isRestricted: { $ne: true } });
+    expect(sellersData).toHaveLength(expectedCount);
   });
 
-  it('should fetch all applicable sellers when all parameters are empty and userSettings does not exist', async () => {
+  it('should fall back to default search filters when userSettings do not exist', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser17' }) as IUser;
     const userSettings = await UserSettings.findOne({ user_settings_id: userData.pi_uid });
     expect(userSettings).toBeNull();
@@ -37,7 +56,7 @@ describe('getAllSellers function', () => {
     expect(sellersData).toHaveLength(1);
   });
 
-  it('should fetch all applicable filtered sellers when all parameters are empty', async () => {
+  it('should fetch all unrestricted and applicable filtered sellers when all parameters are empty', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser2' }) as IUser;
     const sellersData = await getAllSellers(undefined, undefined, userData.pi_uid);
 
@@ -45,7 +64,7 @@ describe('getAllSellers function', () => {
     expect(sellersData).toHaveLength(2);
   });
 
-  it('should fetch all applicable sellers when search query is provided and bounding box params are empty', async () => {
+  it('should fetch all unrestricted and applicable sellers when search query is provided and bounding box params are empty', async () => {
     const searchQuery = 'Vendor';
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     
@@ -54,12 +73,12 @@ describe('getAllSellers function', () => {
     // filter seller records to include those with "Vendor"
     expect(sellersData).toHaveLength(
       await Seller.find({
-        $text: { $search: searchQuery, $caseSensitive: false },
+        $text: { $search: searchQuery },
       }).countDocuments()
     ); // Ensure length matches expected sellers
   });
 
-  it('should fetch all applicable sellers when bounding box params are provided and search query param is empty', async () => {
+  it('should fetch all unrestricted and applicable sellers when bounding box params are provided and search query param is empty', async () => {
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
     const sellersData = await getAllSellers(mockBoundingBox, undefined, userData.pi_uid);
     
@@ -78,7 +97,7 @@ describe('getAllSellers function', () => {
     ); // Ensure length matches expected sellers
   });
 
-  it('should fetch all applicable sellers when all parameters are provided', async () => {
+  it('should fetch all unrestricted and applicable sellers when all parameters are provided', async () => {
     const searchQuery = 'Seller';
     const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
 
@@ -88,7 +107,7 @@ describe('getAllSellers function', () => {
        + include those with sell_map_center within geospatial bounding box */
     expect(sellersData).toHaveLength(
       await Seller.countDocuments({
-        $text: { $search: searchQuery, $caseSensitive: false },
+        $text: { $search: searchQuery },
         'sell_map_center.coordinates': {
           $geoWithin: {
             $box: [
@@ -105,13 +124,67 @@ describe('getAllSellers function', () => {
     const userData = await User.findOne({ pi_username: 'TestUser13' }) as IUser;
     
     // Mock the Seller model to throw an error
-    jest.spyOn(Seller, 'find').mockImplementationOnce(() => {
+    jest.spyOn(Seller, 'aggregate').mockImplementationOnce(() => {
       throw new Error('Mock database error');
     });
 
     await expect(getAllSellers(undefined, undefined, userData.pi_uid)).rejects.toThrow(
       'Mock database error'
     );
+  });
+
+  describe('Additional Search query lookup cases', () => {
+    it('should fetch the appropriate seller when search query matches a User field i.e., pi_username', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const result = await getAllSellers(undefined, 'TestUser2', userData.pi_uid);
+
+      const expectedSeller = await Seller.findOne({ seller_id: '0b0b0b-0b0b-0b0b' });
+      
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ seller_id: expectedSeller?.seller_id })
+        ])
+      );
+    });
+
+    it('should fetch the appropriate seller when search query matches a UserSettings field i.e., user_name)', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const result = await getAllSellers(undefined, 'Test Three', userData.pi_uid);
+
+      const expectedSeller = await Seller.findOne({ seller_id: '0c0c0c-0c0c-0c0c' });
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ seller_id: expectedSeller?.seller_id })
+        ])
+      );
+    });
+
+    it('should fetch the appropriate seller(s) when search query matches a SellerItem field i.e., name, description', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const result = await getAllSellers(undefined, 'Item 2', userData.pi_uid);
+
+      const matchedSellerIds = await SellerItem.find({
+        stock_level: { $ne: StockLevelType.SOLD },
+        expired_by: { $gt: new Date() },
+        $text: { $search: 'Item 2' }
+      }).distinct("seller_id");
+
+      const expectedSellers = await Seller.find({
+        seller_id: { $in: matchedSellerIds },
+        isRestricted: { $ne: true },
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(
+        expect.arrayContaining(
+          expectedSellers.map(s => expect.objectContaining({ seller_id: s.seller_id }))
+        )
+      );
+    });
   });
 });
 
@@ -261,17 +334,17 @@ describe('addOrUpdateSellerItem function', () => {
     
     if (plainObject.createdAt) {
       plainObject.createdAt = new Date(plainObject.createdAt);
-      plainObject.createdAt.setHours(0, 0, 0, 0);
+      plainObject.createdAt.setUTCHours(0, 0, 0, 0);
     }
 
     if (plainObject.updatedAt) {
       plainObject.updatedAt = new Date(plainObject.updatedAt);
-      plainObject.updatedAt.setHours(0, 0, 0, 0);
+      plainObject.updatedAt.setUTCHours(0, 0, 0, 0);
     }
 
     if (plainObject.expired_by) {
       plainObject.expired_by = new Date(plainObject.expired_by);
-      plainObject.expired_by.setHours(0, 0, 0, 0);
+      plainObject.expired_by.setUTCHours(0, 0, 0, 0);
     }
     return plainObject;
   };
@@ -286,7 +359,11 @@ describe('addOrUpdateSellerItem function', () => {
     expect(filteredActual).toEqual(expect.objectContaining({ ...expected, _id: actual._id }));
   };
 
-  it('should build new seller item if it does not exist for the seller', async () => {    
+  it('should build new seller item if it does not exist for the seller', async () => {
+    // Mock current time globally for predictable expiry date computation
+    const fixedNow = new Date('2025-02-20T00:00:00.000Z');
+    jest.spyOn(Date, 'now').mockReturnValue(fixedNow.getTime());
+    
     const sellerItem = {
       seller_id: "0c0c0c-0c0c-0c0c",
       name: 'Test Seller 3 Item 1',
@@ -295,22 +372,19 @@ describe('addOrUpdateSellerItem function', () => {
       stock_level: "Many available",
       duration: 2,
       image: 'http://example.com/testSellerThreeItemOne.jpg',
-      createdAt: '2025-02-20T00:00:00.000Z'
+      createdAt: fixedNow.toISOString()
     } as unknown as ISellerItem;
 
-    const sellerItemData = (await addOrUpdateSellerItem(
-      { seller_id: "0c0c0c-0c0c-0c0c" } as ISeller, sellerItem)) as ISellerItem;
+    (deductMappiBalance as jest.Mock).mockResolvedValue(2);
+
+    const result = await addOrUpdateSellerItem({ seller_id: "0c0c0c-0c0c-0c0c" } as ISeller, sellerItem);
 
     // Convert `sellerItemData` to a plain object if it's a Mongoose document
-    const plainObject = await convertToPlainObject(sellerItemData);
+    const plainObject = await convertToPlainObject(result.sellerItem!);
 
-    const current_date = new Date();
-    current_date.setHours(0, 0, 0, 0);
-
-    // Calculate the expired_by date (current_date + duration in weeks)
-    const durationInMs = (sellerItem.duration || 1) * 7 * 24 * 60 * 60 * 1000;
-    const expired_date = new Date(current_date.getTime() + durationInMs)
-    expired_date.setHours(0, 0, 0, 0);
+    // Simulate same computation as implementation
+    const duration = Math.max(Number(sellerItem.duration) || 1, 1);
+    const expectedExpiredBy = new Date(fixedNow.getTime() + duration * 7 * 24 * 60 * 60 * 1000);
 
     // filter and assert seller item records associated with the seller
     assertNewSellerItem(plainObject, {
@@ -321,51 +395,134 @@ describe('addOrUpdateSellerItem function', () => {
       stock_level: sellerItem.stock_level,
       duration: sellerItem.duration,
       image: sellerItem.image,
-      expired_by: expired_date,
-      createdAt: current_date,
-      updatedAt: current_date
+      expired_by: expectedExpiredBy,
     });
+    expect(deductMappiBalance).toHaveBeenCalledWith(sellerItem.seller_id, 2);
+
+    jest.restoreAllMocks(); // clean up mock
   });
 
-  it('should update existing seller item if it does exist for the seller', async () => {  
-    const sellerItem = {
-      _id: "25f5a0f2a86d1f9f3b7e4e81",
-      seller_id: "0b0b0b-0b0b-0b0b",
-      name: 'Test Seller 2 Item 1 Updated',
-      description: "Test Seller 2 Item 1 Description Updated",
-      price: 0.50,
-      stock_level: "Sold",
-      duration: 2,
-      image: 'http://example.com/testSellerThreeItemOneUpdated.jpg'
-    } as unknown as ISellerItem;
+  describe('addOrUpdateSellerItem | update existing seller item', () => {  
+    it('should deduct Mappi and extend listing when changeInWeeks > 0', async () => {
+      const sellerItem = {
+        _id: "25f5a0f2a86d1f9f3b7e4e81",
+        seller_id: "0b0b0b-0b0b-0b0b",
+        name: 'Test Seller 2 Item 1 Updated',
+        description: "Test Seller 2 Item 1 Description Updated",
+        price: 0.50,
+        stock_level: "Sold",
+        duration: 3,
+        image: 'http://example.com/testSellerTwoItemOneUpdated.jpg'
+      } as unknown as ISellerItem;
 
-    const sellerItemData = (
-      await addOrUpdateSellerItem(
-        { seller_id: "0b0b0b-0b0b-0b0b" } as ISeller, sellerItem)) as ISellerItem;
+      (getChangeInWeeks as jest.Mock).mockReturnValue(2);
+      (computeNewExpiryDate as jest.Mock).mockReturnValue(new Date('2025-01-30T00:00:00.000Z'));
+      (deductMappiBalance as jest.Mock).mockResolvedValue(2);
 
-    // Convert `sellerItemData` to a plain object if it's a Mongoose document
-    const plainObject = await convertToPlainObject(sellerItemData);
+      const result = await addOrUpdateSellerItem({ seller_id: "0b0b0b-0b0b-0b0b" } as ISeller, sellerItem);
 
-    const current_date = new Date();
-    current_date.setHours(0, 0, 0, 0);
+      // Convert `sellerItemData` to a plain object if it's a Mongoose document
+      const plainObject = await convertToPlainObject(result.sellerItem!);
 
-    // Calculate the expired_by date (current_date + duration in weeks)
-    const durationInMs = (sellerItem.duration || 1) * 7 * 24 * 60 * 60 * 1000;
-    const expired_date = new Date(current_date.getTime() + durationInMs)
-    expired_date.setHours(0, 0, 0, 0);
+      const current_date = new Date();
+      current_date.setUTCHours(0, 0, 0, 0);
 
-    // filter and assert seller item records associated with the seller
-    assertUpdatedSellerItem(plainObject, {
-      _id: sellerItem._id,
-      seller_id: sellerItem.seller_id,
-      name: sellerItem.name,
-      description: sellerItem.description,
-      price: sellerItem.price,
-      stock_level: sellerItem.stock_level,
-      duration: sellerItem.duration,
-      image: sellerItem.image,
-      expired_by: expired_date,
-      updatedAt: current_date
+      // In-memory DB' seeded value
+      const existingExpiry = new Date('2025-01-16T00:00:00.000Z');
+      // New duration = existing duration + changeInWeeks
+      const expectedDuration = 1 + getChangeInWeeks(sellerItem as any, sellerItem as any);
+      const expired_date = new Date(existingExpiry.getTime() + getChangeInWeeks(sellerItem as any, sellerItem as any) * 7 * 24 * 60 * 60 * 1000);
+      expired_date.setUTCHours(0, 0, 0, 0);
+
+      // filter and assert seller item records associated with the seller
+      assertUpdatedSellerItem(plainObject, {
+        _id: sellerItem._id,
+        seller_id: sellerItem.seller_id,
+        name: sellerItem.name,
+        description: sellerItem.description,
+        price: sellerItem.price,
+        stock_level: sellerItem.stock_level,
+        duration: expectedDuration,
+        image: sellerItem.image,
+        expired_by: expired_date,
+        updatedAt: current_date
+      });
+
+      expect(deductMappiBalance).toHaveBeenCalledWith(sellerItem.seller_id, 2);
+      expect(result.consumedMappi).toBe(-2);
+      expect(result.sellerItem!.duration).toBe(3);
+      expect(result.sellerItem!.expired_by).toEqual(new Date('2025-01-30T00:00:00.000Z'));
+    });
+
+    it('should refund Mappi and reduce listing when changeInWeeks < 0', async () => {
+      const sellerItem = {
+        _id: "25f5a0f2a86d1f9f3b7e4e82",
+        seller_id: "0b0b0b-0b0b-0b0b",
+        name: 'Test Seller 2 Item 2 Updated',
+        description: "Test Seller 2 Item 2 Description Updated",
+        price: 0.25,
+        stock_level: "Ongoing service",
+        duration: 2,
+        image: 'http://example.com/testSellerTwoItemTwoUpdated.jpg'
+      } as unknown as ISellerItem;
+
+      (getChangeInWeeks as jest.Mock).mockReturnValue(-1);
+      (computeNewExpiryDate as jest.Mock).mockReturnValue(new Date('2025-01-10T00:00:00.000Z'));
+      (addMappiBalance as jest.Mock).mockResolvedValue(1);
+
+      const result = await addOrUpdateSellerItem({ seller_id: "0b0b0b-0b0b-0b0b" } as ISeller, sellerItem);
+
+      // Convert `sellerItemData` to a plain object if it's a Mongoose document
+      const plainObject = await convertToPlainObject(result.sellerItem!);
+
+      const current_date = new Date();
+      current_date.setUTCHours(0, 0, 0, 0);
+
+      // In-memory DB' seeded value
+      const existingExpiry = new Date('2025-01-17T00:00:00.000Z');
+      // New duration = existing duration + changeInWeeks
+      const expectedDuration = 3 + getChangeInWeeks(sellerItem as any, sellerItem as any);
+      const expired_date = new Date(existingExpiry.getTime() + getChangeInWeeks(sellerItem as any, sellerItem as any) * 7 * 24 * 60 * 60 * 1000);
+      expired_date.setUTCHours(0, 0, 0, 0);
+
+      // filter and assert seller item records associated with the seller
+      assertUpdatedSellerItem(plainObject, {
+        _id: sellerItem._id,
+        seller_id: sellerItem.seller_id,
+        name: sellerItem.name,
+        description: sellerItem.description,
+        price: sellerItem.price,
+        stock_level: sellerItem.stock_level,
+        duration: expectedDuration,
+        image: sellerItem.image,
+        expired_by: expired_date,
+        updatedAt: current_date
+      });
+      expect(addMappiBalance).toHaveBeenCalledWith(sellerItem.seller_id, 1, 'refund');
+      expect(result.consumedMappi).toBe(1);
+      expect(result.sellerItem!.expired_by).toEqual(new Date('2025-01-10T00:00:00.000Z'));
+    });
+
+    it('should ignore Mappi when changeInWeeks = 0', async () => {
+      const sellerItem = {
+        _id: "24f5a0f2a86d1f9f3b7e4e81",
+        seller_id: "0a0a0a-0a0a-0a0a",
+        name: 'Test Seller 1 Item 1 Updated',
+        description: "Test Seller 1 Item 1 Description Updated",
+        price: 0.01,
+        stock_level: "1 available",
+        duration: 1,
+        image: 'http://example.com/testSellerOneItemOneUpdated.jpg'
+      } as unknown as ISellerItem;
+
+      (getChangeInWeeks as jest.Mock).mockReturnValue(0);
+      (computeNewExpiryDate as jest.Mock).mockReturnValue('2025-01-15T00:00:00.000Z');
+  
+      const result = await addOrUpdateSellerItem({ seller_id: "0a0a0a-0a0a-0a0a" } as ISeller, sellerItem);
+  
+      expect(deductMappiBalance).not.toHaveBeenCalled();
+      expect(addMappiBalance).not.toHaveBeenCalled();
+      expect(result.consumedMappi).toBe(0);
     });
   });
 
@@ -422,23 +579,23 @@ describe('deleteSellerItem function', () => {
 
   it('should delete seller item if it does exist for the seller', async () => {
     const sellerItem = {
-      _id: "25f5a0f2a86d1f9f3b7e4e82",
-      seller_id: "0b0b0b-0b0b-0b0b",
-      name: 'Test Seller 2 Item 2',
-      description: "Test Seller 2 Item 2 Description",
-      price: 0.25,
-      stock_level: "Ongoing service",
-      duration: 1,
-      image: 'http://example.com/testSellerTwoItemTwo.jpg',
-      createdAt: '2025-01-10T00:00:00.000Z',
-      updatedAt: '2025-01-10T00:00:00.000Z',
-      expired_by: '2025-01-17T00:00:00.000Z'
+      _id: "24f5a0f2a86d1f9f3b7e4e82",
+      seller_id: "0a0a0a-0a0a-0a0a",
+      name: 'Test Seller 1 Item 2',
+      description: "Test Seller 1 Item 2 Description",
+      price: 0.05,
+      stock_level: "2 available",
+      duration: 2,
+      image: 'http://example.com/testSellerOneItemTwo.jpg'
     } as unknown as ISellerItem;
 
-    const sellerItemData = await deleteSellerItem(sellerItem._id) as ISellerItem;
+    (getRemainingWeeks as jest.Mock).mockReturnValue(1);
+    (addMappiBalance as jest.Mock).mockResolvedValue(1);
+
+    const deletedItem = await deleteSellerItem(sellerItem._id) as ISellerItem;
 
     // Convert `sellerItemData` to a plain object if it's a Mongoose document
-    const plainObject = await convertToPlainObject(sellerItemData);
+    const plainObject = await convertToPlainObject(deletedItem);
     
     // filter and assert seller item records associated with the seller
     assertDeletedSellerItem(plainObject, {
@@ -449,20 +606,31 @@ describe('deleteSellerItem function', () => {
       price: sellerItem.price,
       stock_level: sellerItem.stock_level,
       duration: sellerItem.duration,
-      image: sellerItem.image,
-      createdAt: sellerItem.createdAt,
-      updatedAt: sellerItem.updatedAt,
-      expired_by: sellerItem.expired_by
-    });
+      image: sellerItem.image
+    })
+  });
+
+  it('should return null if seller item does not exist', async () => {
+    jest.spyOn(SellerItem, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue(null),
+    } as any);
+
+    const result = await deleteSellerItem('nonexistent-id');
+    expect(result).toBeNull();
+    expect(addMappiBalance).not.toHaveBeenCalled();
   });
 
   it('should throw an error when an exception occurs', async () => {  
     const sellerItem = { _id: "25f5a0f2a86d1f9f3b7e4e82" } as unknown as ISellerItem;
 
+    jest.spyOn(SellerItem, 'findById').mockReturnValue({
+      exec: jest.fn().mockResolvedValue(sellerItem)
+    } as any);
+
     // Mock the SellerItem model to throw an error
-    jest.spyOn(SellerItem, 'findByIdAndDelete').mockImplementationOnce(() => {
-      throw new Error('Mock database error');
-    });
+    jest.spyOn(SellerItem, 'findByIdAndDelete').mockReturnValue({
+      exec: jest.fn().mockRejectedValue(new Error('Mock database error'))
+    } as any);
 
     await expect(deleteSellerItem(sellerItem._id)).rejects.toThrow(
       'Mock database error'

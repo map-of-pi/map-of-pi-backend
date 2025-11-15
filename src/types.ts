@@ -10,11 +10,13 @@ import {OrderStatusType} from "./models/enums/orderStatusType";
 import {OrderItemStatusType} from "./models/enums/orderItemStatusType";
 import {PaymentType} from "./models/enums/paymentType";
 import {U2UPaymentStatus} from "./models/enums/u2uPaymentStatus";
+import { WatchAdsSessionStatus } from "./models/enums/watchAds";
 
 // ========================
 // USER MODELS
 // ========================
 export interface IUser extends Document {
+  _id: Types.ObjectId;
   pi_uid: string;
   pi_username: string;
   user_name: string;
@@ -41,10 +43,11 @@ export interface IUserSettings extends Document {
     include_trust_level_50: Boolean;
     include_trust_level_0: Boolean;
   };
+  wallet_address?: string | null; 
 };
 
 // Select specific fields from IUserSettings
-export type PartialUserSettings = Pick<IUserSettings, 'user_name' | 'email' | 'phone_number' | 'findme' | 'trust_meter_rating'>;
+export type PartialUserSettings = Pick<IUserSettings, 'user_name' | 'trust_meter_rating'>;
 
 // ========================
 // MEMBERSHIP MODELS
@@ -64,6 +67,9 @@ export interface MembershipOption {
   duration: number | null; // in weeks
   mappi_allowance: number;
 }
+
+
+export type PartialUserMembership = Pick<IMembership, 'membership_class'>;
 
 // ========================
 // MAP / GEOLOCATION TYPES
@@ -95,9 +101,10 @@ export interface ISeller extends Document {
   lastSanctionUpdateAt: Date;
 };
 
+export type PartialSeller = Pick<ISeller, 'seller_id' | 'name' | 'image' | 'seller_type' | 'sell_map_center' | 'isRestricted' | 'lastSanctionUpdateAt'>;
+
 // Combined interface representing a seller with selected user settings
-export interface ISellerWithSettings extends ISeller, PartialUserSettings {
-};
+export interface ISellerWithSettings extends PartialSeller, PartialUserSettings, PartialUserMembership {};
 
 export interface ISellerItem extends Document {
   _id: string;
@@ -298,6 +305,31 @@ export interface INotification extends Document {
   createdAt: Date;
   updatedAt: Date;
 };
+
+// ========================
+// WATCH ADS
+// ========================
+export interface IWatchAdsBalance extends Document {
+  userId: Types.ObjectId;
+  availableSecs: number;
+  lifetimeEarnedSecs: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IWatchAdsSession extends Document {
+  userId: Types.ObjectId;
+  status: WatchAdsSessionStatus;
+  totalSegments: number;
+  segmentSecs: number;
+  completedSegments: number;
+  earnedSecs: number;
+  startedAt: Date;
+  endedAt?: Date;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 // ========================
 // SANCTIONS / GEO-RESTRICTIONS

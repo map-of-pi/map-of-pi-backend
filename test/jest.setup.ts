@@ -19,35 +19,52 @@ jest.mock('../src/config/loggingConfig', () => ({
 
 // allow ample time to start running tests
 // TODO - replace mockData.json file w/ mocks to lessen timeout value.
-jest.setTimeout(500000);
+jest.setTimeout(60000);
 
 // MongoDB memory server setup
 let mongoServer: MongoMemoryServer;
 
 beforeAll(async () => {
   try {
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryServer.create({
+      instance: {
+        dbName: 'mapofpi-test-db',
+      },
+    });
     const uri = mongoServer.getUri();
-    await mongoose.connect(uri, { dbName: 'mapofpi-test-db' });
+    await mongoose.connect(uri);
 
-    // Load the mock data into Map of PI DB collections
-    await User.insertMany(mockData.users);
-    await UserSettings.createIndexes();
-    await UserSettings.insertMany(mockData.userSettings);
-    // Ensure indexes are created for the schema models before running tests
-    await Seller.createIndexes();
-    await Seller.insertMany(mockData.sellers);
-    await SellerItem.createIndexes();
-    await SellerItem.insertMany(mockData.sellerItems);
-    await ReviewFeedback.insertMany(mockData.reviews);
-    await Toggle.insertMany(mockData.toggle);
+    // Ensure indexes exist before inserts
+    await Promise.all([
+      User.init(),
+      UserSettings.init(),
+      Seller.init(),
+      SellerItem.init(),
+    ]);
+
+    // Insert data in parallel to save time
+    await Promise.all([
+      // Load the mock data into Map of PI DB collections
+      User.insertMany(mockData.users),
+      UserSettings.insertMany(mockData.userSettings),
+      Seller.insertMany(mockData.sellers),
+      SellerItem.insertMany(mockData.sellerItems),
+      ReviewFeedback.insertMany(mockData.reviews),
+      Toggle.insertMany(mockData.toggle),
+    ]);
   } catch (error) {
-    console.error('Failed to start MongoMemoryServer', error);
+    console.error('Failed to start MongoMemoryServer:', error);
     throw error;
   }
 });
 
 afterAll(async () => {
-  await mongoose.disconnect();
-  await mongoServer.stop();
+  try {
+    await mongoose.disconnect();
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
+  } catch (error) {
+    console.warn('Error during cleanup:', error);
+  }
 });

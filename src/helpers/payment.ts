@@ -109,7 +109,7 @@ const checkoutProcess = async (currentPayment: PaymentDTO, paymentId: string) =>
 /**
  * Complete a Pi payment (U2A) in both DB and blockchain
  */
-const completePiPayment = async (piPaymentId: string, txid:string) => {
+const completePiPayment = async (piPaymentId: string, txid: string) => {
   const res = await platformAPIClient.get(`/v2/payments/${ piPaymentId }`);
   const currentPayment: PaymentDTO = res.data;
   const userPiUid = currentPayment.user_uid;
