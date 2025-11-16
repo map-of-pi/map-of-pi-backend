@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { OrderItemStatusType } from "../models/enums/orderItemStatusType";
 import *  as orderService from "../services/order.service";
-import { ISeller, IUser } from "../types";
+import { ISeller, IUser, NewOrder } from "../types";
 import logger from "../config/loggingConfig";
 
 export const getSellerOrders = async (req: Request, res: Response) => {
@@ -54,8 +54,14 @@ export const createOrder = async (req: Request, res: Response) => {
   const { orderData, orderItems } = req.body;
   try {
     // Ensure no payment ID is attached
-    const sanitizedOrderData = { ...orderData, paymentId: null };
-    const order = await orderService.createOrder(sanitizedOrderData, orderItems, buyer);
+    const sanitizedOrderData: NewOrder = { 
+      ...orderData, 
+      paymentId: null, 
+      orderItems, 
+      buyerPiUid: buyer.pi_uid 
+    };
+
+    const order = await orderService.createOrder(sanitizedOrderData);
     if (!order) {
       logger.error(`Failed to create order with provided data: ${JSON.stringify(sanitizedOrderData)}`);
       return res.status(400).json({ message: "Invalid order data" });

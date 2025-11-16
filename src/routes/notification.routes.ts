@@ -24,18 +24,12 @@ const notificationRoutes = Router();
 
 /**
  * @swagger
- * /api/v1/notifications/{pi_uid}:
+ * /api/v1/notifications:
  *   get:
  *     tags: 
  *      - Notification
- *     summary: Get notifications associated with the user
+ *     summary: Get notifications associated with the user *
  *     parameters:
- *       - name: pi_uid
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *         description: The Pi UID of the notifications to retrieve
  *       - name: skip
  *         in: query
  *         required: false
@@ -50,37 +44,13 @@ const notificationRoutes = Router();
  *           type: integer
  *           default: 20
  *         description: Maximum number of notifications to return
- *     responses:
- *       200:
- *         description: Successful response
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
- *       500:
- *         description: Internal server error
- */
-notificationRoutes.get("/:pi_uid", notificationController.getNotifications);
-
-/**
- * @swagger
- * /api/v1/notifications/:
- *   post:
- *     tags: 
- *      - Notification
- *     summary: Create a new notification *
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *                 example: This is a sample reason for notification.
+ *       - name: status
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [cleared, uncleared]
+ *         description: Filter notifications by cleared vs uncleared status, if applicable.
  *     responses:
  *       200:
  *         description: Successful response
@@ -89,17 +59,56 @@ notificationRoutes.get("/:pi_uid", notificationController.getNotifications);
  *             schema:
  *               type: object
  *               properties:
- *                 message:
- *                   type: string
- *                   example: Notification created successfully
- *                 notification:
- *                   $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
- *       401:
- *         description: Unauthorized
- *       500:
+ *                items:
+ *                  type: array
+ *                  items:
+ *                    $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'
+ *                count:
+ *                  type: integer
+ *                  description: Total number of matching notifications
+ *       401:	
+ *         description: Unauthorized	
+ *       500:	
  *         description: Internal server error
  */
-notificationRoutes.post("/", verifyToken, notificationController.createNotification);
+notificationRoutes.get("/", verifyToken, notificationController.getNotifications);
+
+/**	
+ * @swagger	
+ * /api/v1/notifications/:	
+ *   post:	
+ *     tags: 	
+ *      - Notification	
+ *     summary: Create a new notification *	
+ *     requestBody:	
+ *       required: true	
+ *       content:	
+ *         application/json:	
+ *           schema:	
+ *             type: object	
+ *             properties:	
+ *               reason:	
+ *                 type: string	
+ *                 example: This is a sample reason for notification.	
+ *     responses:	
+ *       200:	
+ *         description: Successful response	
+ *         content:	
+ *           application/json:	
+ *             schema:	
+ *               type: object	
+ *               properties:	
+ *                 message:	
+ *                   type: string	
+ *                   example: Notification created successfully	
+ *                 notification:	
+ *                   $ref: '/api/docs/NotificationsSchema.yml#/components/schemas/Notification'	
+ *       401:	
+ *         description: Unauthorized	
+ *       500:	
+ *         description: Internal server error	
+ */	
+notificationRoutes.post("/", verifyToken, notificationController.createNotification);	
 
 /**
  * @swagger

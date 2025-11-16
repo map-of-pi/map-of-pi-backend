@@ -32,7 +32,7 @@ export const getSingleSeller = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Seller not found" });
     }
     logger.info(`Fetched seller with ID ${seller_id}`);
-    res.status(200).json(currentSeller);
+    return res.status(200).json(currentSeller);
   } catch (error) {
     logger.error(`Failed to get single seller for sellerID ${ seller_id }:`, error);
     return res.status(500).json({ message: 'An error occurred while getting single seller; please try again later' });
@@ -47,7 +47,7 @@ export const fetchSellerRegistration = async (req: Request, res: Response) => {
     }
     const currentSeller = req.currentSeller;
     logger.info(`Fetched seller registration for user ${req.currentUser.pi_uid}`);
-    res.status(200).json(currentSeller);
+    return res.status(200).json(currentSeller);
   } catch (error) {
     logger.error('Failed to fetch seller registration:', error);
     return res.status(500).json({ message: 'An error occurred while fetching seller registration; please try again later' });
@@ -99,7 +99,7 @@ export const deleteSeller = async (req: Request, res: Response) => {
     const authUser = req.currentUser;
     const deletedSeller = await sellerService.deleteSeller(authUser?.pi_uid);
     logger.info(`Deleted seller with ID ${authUser?.pi_uid}`);
-    res.status(200).json({ message: "Seller deleted successfully", deletedSeller });
+    return res.status(200).json({ message: "Seller deleted successfully", deletedSeller });
   } catch (error) {
     logger.error(`Failed to delete seller for userID ${ req.currentUser?.pi_uid }:`, error);
     return res.status(500).json({ message: 'An error occurred while deleting seller; please try again later' });
@@ -137,17 +137,15 @@ export const addOrUpdateSellerItem = async (req: Request, res: Response) => {
 
     logger.debug('Form data being sent:', { formData });
     // Add or update Item
-    const sellerItem = await sellerService.addOrUpdateSellerItem(currentSeller, formData);
+    const item = await sellerService.addOrUpdateSellerItem(currentSeller, formData);
     logger.info(`Added/ updated seller item for seller ${currentSeller.seller_id}`);
 
     // Send response
-    return res.status(200).json({ 
-      sellerItem: sellerItem, 
-    });
-  } catch (error) {
+    return res.status(200).json(item); 
+  } catch (error: any) {
     logger.error(`Failed to add or update seller item for userID ${currentSeller.seller_id}:`, error);
     return res.status(500).json({
-      message: 'An error occurred while adding/ updating seller item; please try again later',
+      message: error.message || 'An error occurred while adding or updating seller item; please try again later',
     });
   }
 };
@@ -159,7 +157,7 @@ export const deleteSellerItem = async (req: Request, res: Response) => {
     const { item_id } = req.params;
     const deletedSellerItem = await sellerService.deleteSellerItem(item_id);
     logger.info(`Deleted seller item with ID ${currentSeller.seller_id}`);
-    res.status(200).json({ message: "Seller item deleted successfully", deletedSellerItem: deletedSellerItem });
+    return res.status(200).json({ message: "Seller item deleted successfully", deletedSellerItem: deletedSellerItem });
   } catch (error) {
     logger.error(`Failed to delete seller item for userID ${ req.currentUser?.pi_uid }:`, error);
     return res.status(500).json({ message: 'An error occurred while deleting seller item; please try again later' });

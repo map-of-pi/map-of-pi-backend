@@ -11,13 +11,13 @@ import SellerItem from "../models/SellerItem";
 import User from "../models/User";
 import { OrderStatusType } from "../models/enums/orderStatusType";
 import { OrderItemStatusType } from "../models/enums/orderItemStatusType";
-import { IOrder, IUser, NewOrder, PickedItems } from "../types";
+import { IOrder, NewOrder } from "../types";
+import { deductMappiBalance } from "./membership.service";
 import logger from "../config/loggingConfig";
+import { MappiDeductionError } from "../errors/MappiDeductionError";
 
 export const createOrder = async (
   orderData: NewOrder,
-  orderItems: PickedItems[],
-  authUser: IUser
 ): Promise<IOrder> => {
   const session = await mongoose.startSession();
 
@@ -25,11 +25,11 @@ export const createOrder = async (
     session.startTransaction();
 
     // Look up the seller and buyer in the database
-    const seller = await Seller.findOne({ seller_id: orderData.sellerId });
-    const buyer = await User.findOne({ pi_uid: authUser?.pi_uid });
+    const seller = await Seller.findOne({ seller_id: orderData.sellerPiUid }).exec();
+    const buyer = await User.findOne({ pi_uid: orderData.buyerPiUid }).exec();
 
     if (!buyer || !seller) {
-      logger.error("Seller or buyer not found", { sellerId: orderData.sellerId, buyerId: authUser?.pi_uid });
+      logger.error("Seller or buyer not found", { sellerId: orderData.sellerPiUid, buyerId: orderData.buyerPiUid });
       throw new Error("Seller or buyer not found");
     }
 
@@ -50,7 +50,7 @@ export const createOrder = async (
     if (!newOrder) throw new Error('Failed to create order');
 
     /* Step 2: Fetch all SellerItem documents associated with the order */
-    const sellerItemIds = orderItems.map((item) => item.itemId);
+    const sellerItemIds = orderData.orderItems.map((item) => item.itemId);
     const sellerItems = await SellerItem.find({ _id: { $in: sellerItemIds } }).session(session);
     const sellerItemMap = new Map(sellerItems.map((doc) => [doc._id.toString(), doc]));
 
@@ -58,7 +58,7 @@ export const createOrder = async (
     const bulkSellerItemUpdates = [];
 
     /* Step 3: Build OrderItem documents for bulk insertion */
-    for (const item of orderItems) {
+    for (const item of orderData.orderItems) {
       const sellerItem = sellerItemMap.get(item.itemId);
       if (!sellerItem) {
         logger.error(`Seller item not found for ID: ${item.itemId}`);
@@ -93,7 +93,10 @@ export const createOrder = async (
       await SellerItem.bulkWrite(bulkSellerItemUpdates, { session });
     }
 
-    /* Step 5: Commit the transaction */
+    /* Step 5: Deduct single mappi for order checkout*/
+    await deductMappiBalance(orderData.buyerPiUid, 1);
+
+    /* Step 6: Commit the transaction */
     await session.commitTransaction();
     logger.info('Order and stock levels created/updated successfully', { orderId: newOrder._id });
 
@@ -103,6 +106,8 @@ export const createOrder = async (
 
     if (error instanceof StockValidationError) {
       logger.warn(`Stock validation failed: ${error.message}`, { itemId: error.itemId });
+    } else if (error instanceof MappiDeductionError) {
+      logger.error(`Mappi deduction failed for PiUID: ${error.pi_uid}: ${error.message}`); 
     } else {
       logger.error(`Failed to create order and update stock: ${error}`);
     }
@@ -132,7 +137,7 @@ export const updatePaidOrder = async (paymentId: string): Promise<IOrder> => {
     }
     return updatedOrder;
 
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to update paid order for paymentID ${ paymentId }: ${ error }`);
     throw error;
   }  
@@ -153,13 +158,13 @@ export const markAsPaidOrder = async (orderId: string): Promise<IOrder> => {
     ).exec();
     
     if (!updatedOrder) {
-      logger.error(`Failed to update paid order for order ID ${ orderId }`);
-      throw new Error('Failed to update paid order');
+      logger.error(`Failed to mark as paid order for order ID ${ orderId }`);
+      throw new Error('Failed to mark as paid order');
     }
     return updatedOrder;
 
-  } catch (error: any) {
-    logger.error(`Failed to update paid order for order ${ orderId }: ${ error }`);
+  } catch (error) {
+    logger.error(`Failed to mark as paid order for order ${ orderId }: ${ error }`);
     throw error;
   }  
 };
@@ -178,7 +183,7 @@ export const getSellerOrdersById = async (piUid: string) => {
       .lean();
     return orders;
 
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to get seller orders for Pi UID ${ piUid }: ${ error }`);
     throw error;
   }
@@ -198,7 +203,7 @@ export const getBuyerOrdersById = async (piUid: string) => {
       .lean();
     return orders;
 
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to get buyer orders for Pi UID ${ piUid }: ${ error }`);
     throw error;
   }
@@ -212,7 +217,7 @@ export const deleteOrderById = async (orderId: string) => {
       return null;
     }
     return deletedOrder;
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to delete order for orderID ${ orderId }: ${ error }`);
     throw error;
   }
@@ -250,7 +255,7 @@ export const getOrderItems = async (orderId: string) => {
       orderItems: result, 
       pi_username: user?.pi_username || '',  
     };
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to get order items for orderID ${ orderId }: ${ error }`);
     throw error;
   }
@@ -291,7 +296,7 @@ export const updateOrderStatus = async (
     }
 
     return updatedOrder;
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to update order status for orderID ${ orderId }: ${ error }`);
     throw error;
   }  
@@ -315,7 +320,7 @@ export const updateOrderItemStatus = async (
 
     logger.info(`Order item ${ itemId } updated to status "${ itemStatus }"`);
     return updatedItem;
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Failed to update order item status for orderItemID ${ itemId }: ${ error }`);
     throw error;
   }

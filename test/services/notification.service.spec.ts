@@ -1,11 +1,112 @@
 import Notification from "../../src/models/Notification";
 import {
   addNotification,
-  getNotifications,
+  getNotificationsAndCount,
   toggleNotificationStatus
 } from '../../src/services/notification.service';
 
 jest.mock('../../src/models/Notification');
+
+describe('getNotificationsAndCount function', () => {
+  const pi_uid = '0b0b0b-0b0b-0b0b';
+  const skip = 5;
+  const limit = 10;
+
+  function mockNotificationQuery(mockItems: any[], count: number) {
+    const sortMock = jest.fn().mockReturnThis();
+    const skipMock = jest.fn().mockReturnThis();
+    const limitMock = jest.fn().mockReturnThis();
+    const execMock = jest.fn().mockResolvedValue(mockItems);
+  
+    (Notification.find as jest.Mock).mockReturnValue({
+      sort: sortMock,
+      skip: skipMock,
+      limit: limitMock,
+      exec: execMock,
+    });
+    (Notification.countDocuments as jest.Mock).mockReturnValue({
+      exec: jest.fn().mockResolvedValue(count)
+    });
+  
+    return { sortMock, skipMock, limitMock, execMock };
+  }
+
+  it('should return notifications and count associated with the user', async () => {
+    const mockNotifications = [
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_A' },
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_B' },
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_C' },
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_D' }
+    ];
+
+    const { sortMock, skipMock, limitMock, execMock } = 
+      mockNotificationQuery(mockNotifications, mockNotifications.length);
+
+    const existingNotifications = await getNotificationsAndCount(pi_uid, skip, limit, undefined);
+    
+    expect(Notification.find).toHaveBeenCalledWith({ pi_uid });
+    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(skipMock).toHaveBeenCalledWith(skip);
+    expect(limitMock).toHaveBeenCalledWith(limit);
+    expect(execMock).toHaveBeenCalled();
+    expect(existingNotifications).toEqual({ items: mockNotifications, count: mockNotifications.length });
+  });
+
+  it('should filter notifications for status cleared', async () => {
+    const mockClearedNotifications = [
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_B' },
+      { pi_uid, is_cleared: true, reason: 'TEST_REASON_C' }
+    ];
+
+    const { sortMock, skipMock, limitMock, execMock } = 
+      mockNotificationQuery(mockClearedNotifications, mockClearedNotifications.length);
+
+    const result = await getNotificationsAndCount(pi_uid, skip, limit, 'cleared');
+    expect(Notification.find).toHaveBeenCalledWith({ pi_uid, is_cleared: true });
+    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(skipMock).toHaveBeenCalledWith(skip);
+    expect(limitMock).toHaveBeenCalledWith(limit);
+    expect(execMock).toHaveBeenCalled();
+    expect(result).toEqual({ items: mockClearedNotifications, count: mockClearedNotifications.length });
+  });
+
+  it('should filter notifications for status uncleared', async () => {
+    const mockUnclearedNotifications = [
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_A' },
+      { pi_uid, is_cleared: false, reason: 'TEST_REASON_D' }
+    ];
+
+    const { sortMock, skipMock, limitMock, execMock } = 
+      mockNotificationQuery(mockUnclearedNotifications, mockUnclearedNotifications.length);
+
+    const result = await getNotificationsAndCount(pi_uid, skip, limit, 'uncleared');
+    expect(Notification.find).toHaveBeenCalledWith({ pi_uid, is_cleared: false });
+    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(skipMock).toHaveBeenCalledWith(skip);
+    expect(limitMock).toHaveBeenCalledWith(limit);
+    expect(execMock).toHaveBeenCalled();
+    expect(result).toEqual({ items: mockUnclearedNotifications, count: mockUnclearedNotifications.length });
+  });
+
+  it('should throw an error if getting notifications and count fails', async () => {
+    const mockError = new Error('Mock database error');
+
+    // Fully mock the chained methods with exec throwing
+    (Notification.find as jest.Mock).mockReturnValue({
+      sort: () => ({
+        skip: () => ({
+          limit: () => ({
+            exec: jest.fn().mockRejectedValue(mockError),
+          }),
+        }),
+      }),
+    });
+
+    (Notification.countDocuments as jest.Mock).mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
+
+    await expect(getNotificationsAndCount(pi_uid, skip, limit, undefined)).rejects.toThrow('Mock database error');
+  });
+});
 
 describe('addNotification function', () => {
   const pi_uid = '0a0a0a-0a0a-0a0a';
@@ -39,57 +140,6 @@ describe('addNotification function', () => {
     (Notification.create as jest.Mock).mockRejectedValue(mockError);
 
     await expect(addNotification(pi_uid, reason)).rejects.toThrow('Mock database error');
-  });
-});
-
-describe('getNotifications function', () => {
-  const pi_uid = '0b0b0b-0b0b-0b0b';
-  const skip = 5;
-  const limit = 10;
-
-  it('should return a list of notifications associated with the user', async () => {
-    const mockNotifications = [
-      { pi_uid, is_cleared: false, reason: 'TEST_REASON_A' },
-      { pi_uid, is_cleared: true, reason: 'TEST_REASON_B' }
-    ];
-
-    const sortMock = jest.fn().mockReturnThis();
-    const skipMock = jest.fn().mockReturnThis();
-    const limitMock = jest.fn().mockReturnThis();
-    const execMock = jest.fn().mockResolvedValue(mockNotifications);
-
-    (Notification.find as jest.Mock).mockReturnValue({
-      sort: sortMock,
-      skip: skipMock,
-      limit: limitMock,
-      exec: execMock,
-    });
-
-    const existingNotifications = await getNotifications(pi_uid, skip, limit);
-    
-    expect(Notification.find).toHaveBeenCalledWith({ pi_uid });
-    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
-    expect(skipMock).toHaveBeenCalledWith(skip);
-    expect(limitMock).toHaveBeenCalledWith(limit);
-    expect(execMock).toHaveBeenCalled();
-    expect(existingNotifications).toEqual(mockNotifications);
-  });
-
-  it('should throw an error if getting notifications fail', async () => {
-    const mockError = new Error('Mock database error');
-
-    // Fully mock the chained methods with exec throwing
-    (Notification.find as jest.Mock).mockReturnValue({
-      sort: () => ({
-        skip: () => ({
-          limit: () => ({
-            exec: jest.fn().mockRejectedValue(mockError),
-          }),
-        }),
-      }),
-    });
-
-    await expect(getNotifications(pi_uid, skip, limit)).rejects.toThrow('Mock database error');
   });
 });
 

@@ -32,17 +32,21 @@ const options = {
     ],
     components: {
       securitySchemes: {
-        bearerAuth: {
+        BearerAuth: {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-        }
+        },
+        AdminPasswordAuth: {
+          type: "http",
+          scheme: "basic", // or whatever scheme you use
+          description: "Admin basic auth",
+        },
       }
     },
     security: [
-      {
-        bearerAuth: []
-      }
+      { BearerAuth: [] },
+      { AdminPasswordAuth: [] }
     ]
   },
   apis: [
