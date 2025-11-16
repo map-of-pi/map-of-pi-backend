@@ -2,40 +2,35 @@ import Notification from "../models/Notification";
 import { INotification } from "../types";
 import logger from "../config/loggingConfig";
 
+export const getNotificationsAndCount = async (
+  pi_uid: string,
+  skip: number,
+  limit: number,
+  status?: 'cleared' | 'uncleared'
+): Promise<{ items: INotification[]; count: number }> => {
+  try {
+    const filter: any = { pi_uid };
+    if (status === 'cleared') filter.is_cleared = true;
+    if (status === 'uncleared') filter.is_cleared = false;
+
+    const [items, count] = await Promise.all([
+      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      Notification.countDocuments(filter).exec()
+    ]);
+
+    return { items, count };
+  } catch (error: any) {
+    logger.error(`Failed to get notifications and count for piUID ${pi_uid}: ${error.message}`);
+    throw error;
+  }
+};
+
 export const addNotification = async (pi_uid: string, reason: string): Promise<INotification> => {
   try {
     const notification = await Notification.create({pi_uid, reason, is_cleared: false});
     return notification as INotification;
   } catch (error: any) {
     logger.error(`Failed to add notification for piUID ${ pi_uid }: ${ error.message}`);
-    throw error;
-  }
-};
-
-export const getNotifications = async (
-  pi_uid: string, 
-  skip: number, 
-  limit: number,
-  status?: 'cleared' | 'uncleared'
-): Promise<INotification[]> => {
-  try {
-    const filter: any = { pi_uid };
-
-    if (status === 'cleared') {
-      filter.is_cleared = true;
-    } else if (status === 'uncleared') {
-      filter.is_cleared = false;
-    }
-
-    const notifications = await Notification.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec();
-
-    return notifications as INotification[];
-  } catch (error: any) {
-    logger.error(`Failed to get notifications for piUID ${ pi_uid }: ${error.message}`);
     throw error;
   }
 };
