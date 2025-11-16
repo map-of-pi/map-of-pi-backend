@@ -1,4 +1,4 @@
-import { getUpdatedStockLevel } from "../../src/helpers/order";
+import { getUpdatedStockLevel, getRollbackStockLevel } from "../../src/helpers/order";
 import { StockLevelType } from "../../src/models/enums/stockLevelType";
 import { StockValidationError } from "../../src/errors/StockValidationError";
 
@@ -55,5 +55,59 @@ describe('getUpdatedStockLevel function', () => {
 
   it('should throw StockValidationError if stock level is unhandled', () => {
     expect(() => getUpdatedStockLevel('UNKNOWN_LEVEL' as StockLevelType, 1, itemId)).toThrow(StockValidationError);
+  });
+});
+
+describe('getRollbackStockLevel function', () => {
+  it('should handle SOLD: quantity 1 returns AVAILABLE_1', () => {
+    expect(getRollbackStockLevel(StockLevelType.SOLD, 1)).toBe(StockLevelType.AVAILABLE_1);
+  });
+
+  it('should handle SOLD: quantity 2 returns AVAILABLE_2', () => {
+    expect(getRollbackStockLevel(StockLevelType.SOLD, 2)).toBe(StockLevelType.AVAILABLE_2);
+  });
+
+  it('should handle SOLD: quantity 3 returns AVAILABLE_3', () => {
+    expect(getRollbackStockLevel(StockLevelType.SOLD, 3)).toBe(StockLevelType.AVAILABLE_3);
+  });
+
+  it('should handle SOLD: quantity > 3 returns null', () => {
+    expect(getRollbackStockLevel(StockLevelType.SOLD, 4)).toBeNull();
+  });
+
+  it('should handle AVAILABLE_1: quantity 1 returns AVAILABLE_2', () => {
+    expect(getRollbackStockLevel(StockLevelType.AVAILABLE_1, 1)).toBe(StockLevelType.AVAILABLE_2);
+  });
+
+  it('should handle AVAILABLE_1: quantity 2 returns AVAILABLE_3', () => {
+    expect(getRollbackStockLevel(StockLevelType.AVAILABLE_1, 2)).toBe(StockLevelType.AVAILABLE_3);
+  });
+
+  it('should handle AVAILABLE_1: quantity > 2 returns null', () => {
+    expect(getRollbackStockLevel(StockLevelType.AVAILABLE_1, 3)).toBeNull();
+  });
+
+  it('should handle AVAILABLE_2: quantity 1 returns AVAILABLE_3', () => {
+    expect(getRollbackStockLevel(StockLevelType.AVAILABLE_2, 1)).toBe(StockLevelType.AVAILABLE_3);
+  });
+
+  it('should handle AVAILABLE_2: quantity > 1 returns null', () => {
+    expect(getRollbackStockLevel(StockLevelType.AVAILABLE_2, 2)).toBeNull();
+  });
+
+  it('should handle MANY_AVAILABLE: regardless of quantity returns null', () => {
+    expect(getRollbackStockLevel(StockLevelType.MANY_AVAILABLE, 10)).toBeNull();
+  });
+
+  it('should handle MADE_TO_ORDER: regardless of quantity returns null', () => {
+    expect(getRollbackStockLevel(StockLevelType.MADE_TO_ORDER, 5)).toBeNull();
+  });
+
+  it('should handle ONGOING_SERVICE: regardless of quantity returns null', () => {
+    expect(getRollbackStockLevel(StockLevelType.ONGOING_SERVICE, 1)).toBeNull();
+  });
+
+  it('should return null if stock level is unhandled', () => {
+    expect(getRollbackStockLevel('UNKNOWN_LEVEL' as StockLevelType, 1)).toBeNull();
   });
 });

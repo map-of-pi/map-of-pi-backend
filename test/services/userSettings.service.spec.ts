@@ -72,4 +72,42 @@ describe('addOrUpdateUserSettings function', () => {
       search_map_center: updatedUserSettingsData.search_map_center
     }));
   });
+
+  describe('Additional wallet_address field validation', () => {
+    it('should save wallet_address when a value is provided', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const userSettingsData = await addOrUpdateUserSettings(
+        userData,
+        { ...formData, wallet_address: 'GARXTFND5IQK5BFQPGQXUGLXOINQJJKQMEUX7KQYEPFLDPRG6B5I36XX' },
+        formData.image ?? ''
+      );
+
+      expect(userSettingsData.wallet_address).toBe('GARXTFND5IQK5BFQPGQXUGLXOINQJJKQMEUX7KQYEPFLDPRG6B5I36XX');
+    });
+
+    it('should trim wallet_address before saving', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const userSettingsData = await addOrUpdateUserSettings(
+        userData,
+        { ...formData, wallet_address: ' GARXTFND5IQK5BFQPGQXUGLXOINQJJKQMEUX7KQYEPFLDPRG6B5I36XX ' },
+        formData.image ?? ''
+      );
+
+      expect(userSettingsData.wallet_address).toBe('GARXTFND5IQK5BFQPGQXUGLXOINQJJKQMEUX7KQYEPFLDPRG6B5I36XX');
+    });
+
+    it('should clear wallet_address when empty string is provided', async () => {
+      const userData = await User.findOne({ pi_username: 'TestUser1' }) as IUser;
+
+      const userSettingsData = await addOrUpdateUserSettings(
+        userData,
+        { ...formData, wallet_address: '' },
+        formData.image ?? ''
+      );
+
+      expect(userSettingsData.wallet_address).toBeNull();
+    });
+  });
 });
