@@ -73,6 +73,7 @@ const userSettingsSchema = new Schema<IUserSettings>(
 
 // use GeoJSON format to store geographical data i.e., points using '2dsphere' index.
 userSettingsSchema.index({ search_map_center: '2dsphere' });
+userSettingsSchema.index({ user_name: "text", email: "text" });
 
 const UserSettings = mongoose.model<IUserSettings>("User-Settings", userSettingsSchema);
 
