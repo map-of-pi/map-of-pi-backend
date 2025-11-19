@@ -20,6 +20,8 @@ const userSchema = new Schema<IUser>(
   }
 );
 
+userSchema.index({ pi_username: "text" });
+
 const User = mongoose.model<IUser>("User", userSchema);
 
 export default User;

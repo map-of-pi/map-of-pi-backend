@@ -57,7 +57,8 @@
         "include_trust_level_80": true,
         "include_trust_level_50": true,
         "include_trust_level_0": true
-      }
+      },
+      "wallet_address": "GARXTFND5IQK5BFQPGQXUGLXOINQJJKQMEUX7KQYEPFLDPRG6B5I36CC"
     },
     {
       "user_settings_id": "0b0b0b-0b0b-0b0b",
@@ -79,7 +80,8 @@
         "include_trust_level_80": true,
         "include_trust_level_50": false,
         "include_trust_level_0": false
-      }
+      },
+      "wallet_address": null
     },
     {
       "user_settings_id": "0c0c0c-0c0c-0c0c",
@@ -395,7 +397,7 @@
       "stock_level": "1 available",
       "image": "http://example.com/testSellerOneItemOne.jpg",
       "duration": 1,
-      "expired_by": "2025-01-15T00:00:00.000Z",
+      "expired_by": "2026-01-15T00:00:00.000Z",
       "createdAt": "2025-01-08T00:00:00.000Z",
       "updatedAt": "2025-01-08T00:00:00.000Z"
     },
@@ -408,7 +410,7 @@
       "stock_level": "2 available",
       "image": "http://example.com/testSellerOneItemTwo.jpg",
       "duration": 2,
-      "expired_by": "2025-01-22T00:00:00.000Z",
+      "expired_by": "2026-01-22T00:00:00.000Z",
       "createdAt": "2025-01-08T00:00:00.000Z",
       "updatedAt": "2025-01-08T00:00:00.000Z"
     },
@@ -421,7 +423,7 @@
       "stock_level": "Sold",
       "image": "http://example.com/testSellerTwoItemOne.jpg",
       "duration": 1,
-      "expired_by": "2025-01-16T00:00:00.000Z",
+      "expired_by": "2026-01-16T00:00:00.000Z",
       "createdAt": "2025-01-09T00:00:00.000Z",
       "updatedAt": "2025-01-09T00:00:00.000Z"
     },
@@ -434,7 +436,7 @@
       "stock_level": "Ongoing service",
       "image": "http://example.com/testSellerTwoItemTwo.jpg",
       "duration": 3,
-      "expired_by": "2025-01-17T00:00:00.000Z",
+      "expired_by": "2026-01-17T00:00:00.000Z",
       "createdAt": "2025-01-10T00:00:00.000Z",
       "updatedAt": "2025-01-10T00:00:00.000Z"
     }

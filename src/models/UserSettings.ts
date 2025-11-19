@@ -68,8 +68,16 @@ const userSettingsSchema = new Schema<IUserSettings>(
       required: true,
       default: {},
     },
+    wallet_address: {  
+      type: String,
+      trim: true,
+      required: false,
+      default: null,
+    },
   }
 );
+
+userSettingsSchema.index({ user_name: "text", email: "text" });
 
 // use GeoJSON format to store geographical data i.e., points using '2dsphere' index.
 userSettingsSchema.index({ search_map_center: '2dsphere' });

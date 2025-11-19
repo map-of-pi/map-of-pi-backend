@@ -69,32 +69,56 @@ const buildTrustLevelFilters = (searchFilters: any): TrustMeterScale[] => {
 };
 
 const buildSearchQuery = async (
-  baseCriteria: Record<string, any>, search_query?: string
+  baseCriteria: Record<string, any>,
+  search_query?: string
 ): Promise<Record<string, any>> => {
-  if (!search_query) return baseCriteria;
+  if (!search_query || !search_query.trim()) return baseCriteria;
 
-  // Match sellers via items
-  const sellerIdsFromItems = await SellerItem.find({
+  const normalizedQuery = search_query.trim();
+
+  /**
+   * Seller field search
+   */
+  const sellerTextSearch = { $text: { $search: normalizedQuery } };
+
+   /**
+   * Sellers matched through SellerItems
+   */
+   const sellerIdsFromItems = await SellerItem.find({
     stock_level: { $ne: StockLevelType.SOLD },
     expired_by: { $gt: new Date() },
-    $text: { $search: search_query },
+    $text: { $search: normalizedQuery }
   }).distinct("seller_id");
 
-  // If any sellers matched via items, combine using $or
-  if (sellerIdsFromItems.length > 0) {
-    return { 
-      ...baseCriteria,
-      $or: [
-        { $text: { $search: search_query, $caseSensitive: false } },
-        { seller_id: { $in: sellerIdsFromItems } }
-      ]
-    };
-  }
+  /**
+   * Sellers matched through User field i.e., pi_username
+   */
+  const sellerIdsFromUsers = await User.find({
+    $text: { $search: normalizedQuery }
+  }).distinct("pi_uid");
 
-  // If no sellers matched via items, just search text at top level
+  /**
+   * Sellers matched through UserSetting fields i.e., user_name, email
+   */
+  const sellerIdsFromUserSettings = await UserSettings.find({
+    $text: { $search: normalizedQuery }
+  }).distinct("user_settings_id");
+
+  // Combine all matching IDs from lookups; deduplicated
+  const aggregatedSellerIdMatches = [
+    ...new Set([
+      ...sellerIdsFromItems,
+      ...sellerIdsFromUsers,
+      ...sellerIdsFromUserSettings,
+    ]),
+  ];
+
   return {
     ...baseCriteria,
-    $text: { $search: search_query, $caseSensitive: false }
+    $or: [
+      sellerTextSearch,
+      { seller_id: { $in: aggregatedSellerIdMatches } }
+    ]
   };
 };
 
@@ -148,7 +172,8 @@ const resolveSellerSettings = async (
   );
 
   const sellersWithSettings = sellers.map((seller) => {
-    const sellerObject = seller.toObject();
+    // Safe conversion: if seller is a Mongoose doc, call toObject(), otherwise keep as is
+    const sellerObject = seller.toObject ? seller.toObject() : seller;
     const userSettings = settingsMap.get(seller.seller_id);
     const membershipClass = membershipMap.get(seller.seller_id);
 
@@ -199,15 +224,26 @@ export const getAllSellers = async (
     // [Trust Level Filters]
     const trustLevelFilters = buildTrustLevelFilters(searchFilters);
 
+    // Normalize search query
+    const normalizedSearchQuery = search_query?.trim() || "";
+ 
     // Build seller query
-    const sellerQuery = await buildSearchQuery(baseCriteria, search_query);
-    
-    // Execute query
-    const finalSellerDocs = await Seller.find(sellerQuery)
-      .select('seller_id name image seller_type sell_map_center isRestricted lastSanctionUpdateAt -_id')
-      .sort({ updatedAt: -1 })
-      .limit(maxNumSellers)
-      .exec();
+    const sellerQuery = await buildSearchQuery(baseCriteria, normalizedSearchQuery);
+    // Execute aggregation
+    const finalSellerDocs = await Seller.aggregate([
+      { $match: sellerQuery },
+      // Only include lookups if search query is provided
+      ...(normalizedSearchQuery?.length
+        ? [
+            { $lookup: { from: 'users', localField: 'seller_id', foreignField: 'pi_uid', as: 'user' } },
+            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+            { $lookup: { from: 'usersettings', localField: 'seller_id', foreignField: 'user_settings_id', as: 'userSettings' } },
+            { $unwind: { path: '$userSettings', preserveNullAndEmptyArrays: true } },
+          ]
+        : []),
+      { $sort: { updatedAt: -1 } },
+      { $limit: maxNumSellers },
+    ]);
 
     // Post-filter + merge settings
     return await resolveSellerSettings(finalSellerDocs, trustLevelFilters);
