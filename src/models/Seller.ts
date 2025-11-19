@@ -82,8 +82,8 @@ const sellerSchema = new Schema<ISeller>(
 sellerSchema.index({ name: 'text', description: 'text', address: 'text' });
 
 // Creating a 2dsphere index for the sell_map_center field
-sellerSchema.index({'sell_map_center.coordinates': '2dsphere'});
-sellerSchema.index({'sell_map_center': '2dsphere', 'updatedAt': -1});
+sellerSchema.index({sell_map_center: '2dsphere', 'updatedAt': -1});
+
 
 // Creating the Seller model from the schema
 const Seller = mongoose.model<ISeller>("Seller", sellerSchema);

@@ -20,11 +20,11 @@ import {
   IUser, 
   IUserSettings, 
   ISeller, 
-  ISellerWithSettings, 
   ISellerItem
 } from "../types";
 import logger from "../config/loggingConfig";
 import { MappiDeductionError } from "../errors/MappiDeductionError";
+import { PipelineStage } from "mongoose";
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {
@@ -56,202 +56,181 @@ const buildBaseCriteria = (searchFilters: any): Record<string, any> => {
   return criteria;
 };
 
-const buildTrustLevelFilters = (searchFilters: any): TrustMeterScale[] => {
-  const trustLevels = [
-    { key: "include_trust_level_100", value: TrustMeterScale.HUNDRED },
-    { key: "include_trust_level_80", value: TrustMeterScale.EIGHTY },
-    { key: "include_trust_level_50", value: TrustMeterScale.FIFTY },
-    { key: "include_trust_level_0", value: TrustMeterScale.ZERO },
-  ];
-  return trustLevels
-    .filter(({ key }) => searchFilters[key])
-    .map(({ value }) => value);
-};
+const buildTrustLevelCriteria = (searchFilters: any): Record<string, any> => {
+  const criteria: Record<string, any> = {};
 
-const buildSearchQuery = async (
-  baseCriteria: Record<string, any>,
-  search_query?: string
-): Promise<Record<string, any>> => {
-  if (!search_query || !search_query.trim()) return baseCriteria;
-
-  const normalizedQuery = search_query.trim();
-
-  /**
-   * Seller field search
-   */
-  const sellerTextSearch = { $text: { $search: normalizedQuery } };
-
-   /**
-   * Sellers matched through SellerItems
-   */
-   const sellerIdsFromItems = await SellerItem.find({
-    stock_level: { $ne: StockLevelType.SOLD },
-    expired_by: { $gt: new Date() },
-    $text: { $search: normalizedQuery }
-  }).distinct("seller_id");
-
-  /**
-   * Sellers matched through User field i.e., pi_username
-   */
-  const sellerIdsFromUsers = await User.find({
-    $text: { $search: normalizedQuery }
-  }).distinct("pi_uid");
-
-  /**
-   * Sellers matched through UserSetting fields i.e., user_name, email
-   */
-  const sellerIdsFromUserSettings = await UserSettings.find({
-    $text: { $search: normalizedQuery }
-  }).distinct("user_settings_id");
-
-  // Combine all matching IDs from lookups; deduplicated
-  const aggregatedSellerIdMatches = [
-    ...new Set([
-      ...sellerIdsFromItems,
-      ...sellerIdsFromUsers,
-      ...sellerIdsFromUserSettings,
-    ]),
+  const trustMap = [
+    ["include_trust_level_100", TrustMeterScale.HUNDRED],
+    ["include_trust_level_80", TrustMeterScale.EIGHTY],
+    ["include_trust_level_50", TrustMeterScale.FIFTY],
+    ["include_trust_level_0", TrustMeterScale.ZERO],
   ];
 
-  return {
-    ...baseCriteria,
-    $or: [
-      sellerTextSearch,
-      { seller_id: { $in: aggregatedSellerIdMatches } }
-    ]
-  };
+  const trustLevels = trustMap
+    .filter(([flag]) => searchFilters[flag])
+    .map(([, value]) => value);
+
+  if (trustLevels.length > 0) {
+    criteria["settings.trust_meter_rating"] = { $in: trustLevels };
+  }
+
+  return criteria;
 };
 
-const addGeoFilter = (
-  criteria: Record<string, any>, 
-  bounds?: { sw_lat: number, sw_lng: number, ne_lat: number, ne_lng: number }
-) => {
-  if (!bounds) return;
-  criteria.sell_map_center = {
-    $geoWithin: {
-      $geometry: {
-        type: "Polygon",
-        coordinates: [[
-          [bounds.sw_lng, bounds.sw_lat],
-          [bounds.ne_lng, bounds.sw_lat],
-          [bounds.ne_lng, bounds.ne_lat],
-          [bounds.sw_lng, bounds.ne_lat],
-          [bounds.sw_lng, bounds.sw_lat],
-        ]],
-      },
-    },
-  };
-}; 
-
-// Helper function to get settings for all sellers and merge them into seller objects
-const resolveSellerSettings = async (
-  sellers: ISeller[],
-  trustLevelFilters?: number[]
-): Promise<ISellerWithSettings[]> => {
-
-  if (!sellers.length) return [];
-
-  const sellerIds = sellers.map(seller => seller.seller_id);
-
-  // Batch fetch all relevant user settings
-  const allUserSettings = await UserSettings.find({
-    user_settings_id: { $in: sellerIds }
-  }).select('user_settings_id trust_meter_rating user_name -_id').exec();
-
-  // Batch fetch all relevant memberships
-  const sellerMemberships = await Membership.find({ pi_uid: { $in: sellerIds } })
-    .select('pi_uid membership_class -_id')
-    .exec();
-
-  // Create maps for quick lookup
-  const settingsMap = new Map(
-    allUserSettings.map(setting => [setting.user_settings_id, setting])
-  );
-  const membershipMap = new Map(
-    sellerMemberships.map(m => [m.pi_uid, m.membership_class])
-  );
-
-  const sellersWithSettings = sellers.map((seller) => {
-    // Safe conversion: if seller is a Mongoose doc, call toObject(), otherwise keep as is
-    const sellerObject = seller.toObject ? seller.toObject() : seller;
-    const userSettings = settingsMap.get(seller.seller_id);
-    const membershipClass = membershipMap.get(seller.seller_id);
-
-    // Check trust level filter
-    const trustMeterRating = userSettings?.trust_meter_rating ?? -1;
-    if (trustLevelFilters && !trustLevelFilters.includes(trustMeterRating)) {
-      return null;
-    }
-
-    try {
-      return {
-        ...sellerObject,
-        trust_meter_rating: trustMeterRating,
-        user_name: userSettings?.user_name,
-        membership_class: membershipClass ?? null,
-      } as ISellerWithSettings;
-    } catch (error) {
-      logger.error(`Failed to resolve settings for sellerID ${seller.seller_id}:`, error);
-      return {
-        ...sellerObject,
-        trust_meter_rating: TrustMeterScale.ZERO,
-        user_name: seller.name,
-        membership_class: membershipClass ?? null,
-      } as unknown as ISellerWithSettings;
-    }
-  });
-
-  return sellersWithSettings.filter(Boolean) as ISellerWithSettings[];
-};
-
-// Fetch all sellers or within a specific bounding box; optional search query.
 export const getAllSellers = async (
-  bounds?: { sw_lat: number, sw_lng: number, ne_lat: number, ne_lng: number },
+  bounds?: { sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number },
   search_query?: string,
   userId?: string,
-): Promise<ISellerWithSettings[]> => {
+): Promise<any[]> => {
   try {
     const maxNumSellers = 50;
+    const hasSearchQuery = !!(search_query && search_query.trim());
 
-    // Load user settings with defaults
-    const userSettings: any = userId ? await getUserSettingsById(userId) ?? {} : {};
+    const userSettings: any = userId ? (await getUserSettingsById(userId)) ?? {} : {};
     const searchFilters = userSettings.search_filters ?? buildDefaultSearchFilters();
 
-    // Build criteria
     const baseCriteria = buildBaseCriteria(searchFilters);
-    // [Geo Filter]
-    addGeoFilter(baseCriteria, bounds);
-    // [Trust Level Filters]
-    const trustLevelFilters = buildTrustLevelFilters(searchFilters);
 
-    // Normalize search query
-    const normalizedSearchQuery = search_query?.trim() || "";
- 
-    // Build seller query
-    const sellerQuery = await buildSearchQuery(baseCriteria, normalizedSearchQuery);
-    // Execute aggregation
-    const finalSellerDocs = await Seller.aggregate([
-      { $match: sellerQuery },
-      // Only include lookups if search query is provided
-      ...(normalizedSearchQuery?.length
-        ? [
-            { $lookup: { from: 'users', localField: 'seller_id', foreignField: 'pi_uid', as: 'user' } },
-            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-            { $lookup: { from: 'usersettings', localField: 'seller_id', foreignField: 'user_settings_id', as: 'userSettings' } },
-            { $unwind: { path: '$userSettings', preserveNullAndEmptyArrays: true } },
-          ]
-        : []),
+    const trustCriteria = buildTrustLevelCriteria(searchFilters);
+    if (bounds) {
+      baseCriteria.sell_map_center = {
+        $geoWithin: {
+          $geometry: {
+            type: "Polygon",
+            coordinates: [[
+              [bounds.sw_lng, bounds.sw_lat],
+              [bounds.ne_lng, bounds.sw_lat],
+              [bounds.ne_lng, bounds.ne_lat],
+              [bounds.sw_lng, bounds.ne_lat],
+              [bounds.sw_lng, bounds.sw_lat],
+            ]],
+          },
+        },
+      };
+    }
+
+    const pipeline: PipelineStage[] = [
+      { $match: baseCriteria },
+      {
+        $lookup: {
+          from: "memberships",
+          localField: "seller_id",
+          foreignField: "pi_uid",
+          as: "membership",
+        },
+      },
+      { $unwind: { path: "$membership", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "user-settings",
+          localField: "seller_id",
+          foreignField: "user_settings_id",
+          as: "settings",
+        },
+      },
+      { $unwind: { path: "$settings", preserveNullAndEmptyArrays: true } },
+      { $match: trustCriteria },
+    ];
+
+    // 🔍 Hybrid search block
+    if (hasSearchQuery) {
+      const tokens = search_query.trim().split(/\s+/);
+
+      pipeline.push(
+        {
+          $lookup: {
+            from: "seller-items",
+            let: { sid: "$seller_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ["$seller_id", "$$sid"] },
+                      { $gt: ["$expired_by", new Date()] },
+                      { $ne: ["$stock_level", StockLevelType.SOLD] },
+                    ],
+                  },
+                },
+              },
+            ],
+            as: "items",
+          },
+        },
+        { $unwind: { path: "$items", preserveNullAndEmptyArrays: true } },
+        {
+          $match: {
+            $or: [
+              { name: { $regex: search_query, $options: "i" } },
+              { description: { $regex: search_query, $options: "i" } },
+              { address: { $regex: search_query, $options: "i" } },
+              { "settings.user_name": { $regex: search_query, $options: "i" } },
+              { "items.name": { $regex: search_query, $options: "i" } },
+              { "items.description": { $regex: search_query, $options: "i" } },
+              ...tokens.flatMap((token) => [
+                { name: { $regex: token, $options: "i" } },
+                { description: { $regex: token, $options: "i" } },
+                { address: { $regex: token, $options: "i" } },
+                { "settings.user_name": { $regex: token, $options: "i" } },
+                { "items.name": { $regex: token, $options: "i" } },
+                { "items.description": { $regex: token, $options: "i" } },
+              ]),
+            ],
+          },
+        },
+
+        {
+          $group: {
+            _id: "$seller_id",
+            doc: { $first: "$$ROOT" },
+            items: { $push: "$items" },
+          },
+        },
+        {
+          $replaceRoot: {
+            newRoot: {
+              $mergeObjects: ["$doc", { items: "$items" }],
+            },
+          },
+        },
+      );
+    }
+
+    pipeline.push(
+      {
+        $addFields: {
+          user_name: "$settings.user_name",
+          trust_meter_rating: "$settings.trust_meter_rating",
+          membership_class: "$membership.membership_class",
+        },
+      },
       { $sort: { updatedAt: -1 } },
       { $limit: maxNumSellers },
-    ]);
+      {
+        $project: {
+          seller_id: 1,
+          name: 1,
+          image: 1,
+          seller_type: 1,
+          sell_map_center: 1,
+          isRestricted: 1,
+          lastSanctionUpdateAt: 1,
+          items: 1,
+          user_name: 1,
+          trust_meter_rating: 1,
+          membership_class: 1,
+        },
+      },
+    );
 
-    // Post-filter + merge settings
-    return await resolveSellerSettings(finalSellerDocs, trustLevelFilters);
-  } catch (error) {
-    logger.error(`Failed to get all sellers: ${ error }`);
-    throw error;
+    const sellers = await Seller.aggregate(pipeline).exec();
+    logger.info(`Aggregated fetched sellers: ${sellers.length}`);
+    return sellers;
+  } catch (error: any) {
+    throw new Error(`Failed to retrieve sellers: ${error.message}`);
   }
 };
+
 
 // Fetch a single seller by ID
 export const getSingleSellerById = async (seller_id: string): Promise<ISeller | null> => {
