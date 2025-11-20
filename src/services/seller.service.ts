@@ -113,6 +113,15 @@ export const getAllSellers = async (
       { $match: baseCriteria },
       {
         $lookup: {
+          from: "users",
+          localField: "seller_id",
+          foreignField: "pi_uid",
+          as: "users",
+        },
+      },
+      { $unwind: { path: "$users", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
           from: "memberships",
           localField: "seller_id",
           foreignField: "pi_uid",
@@ -164,6 +173,7 @@ export const getAllSellers = async (
               { name: { $regex: search_query, $options: "i" } },
               { description: { $regex: search_query, $options: "i" } },
               { address: { $regex: search_query, $options: "i" } },
+              { "users.pi_username": { $regex: search_query, $options: "i" } },
               { "settings.user_name": { $regex: search_query, $options: "i" } },
               { "items.name": { $regex: search_query, $options: "i" } },
               { "items.description": { $regex: search_query, $options: "i" } },
@@ -171,6 +181,7 @@ export const getAllSellers = async (
                 { name: { $regex: token, $options: "i" } },
                 { description: { $regex: token, $options: "i" } },
                 { address: { $regex: token, $options: "i" } },
+                { "users.pi_username": { $regex: token, $options: "i" } },
                 { "settings.user_name": { $regex: token, $options: "i" } },
                 { "items.name": { $regex: token, $options: "i" } },
                 { "items.description": { $regex: token, $options: "i" } },
