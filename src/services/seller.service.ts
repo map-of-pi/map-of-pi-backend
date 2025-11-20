@@ -1,4 +1,5 @@
-import mongoose from "mongoose";
+import mongoose, { PipelineStage } from "mongoose";
+
 import { 
   computeNewExpiryDate, 
   getChangeInWeeks, 
@@ -24,7 +25,6 @@ import {
 } from "../types";
 import logger from "../config/loggingConfig";
 import { MappiDeductionError } from "../errors/MappiDeductionError";
-import { PipelineStage } from "mongoose";
 
 /* Helper Functions */
 const buildDefaultSearchFilters = () => {
@@ -234,7 +234,9 @@ export const getAllSellers = async (
       },
     );
 
+    console.time("searchQuery");
     const sellers = await Seller.aggregate(pipeline).exec();
+    console.timeEnd("searchQuery");
     logger.info(`Aggregated fetched sellers: ${sellers.length}`);
     return sellers;
   } catch (error: any) {
